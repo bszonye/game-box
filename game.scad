@@ -30,6 +30,7 @@ $fa = Qdraft;
 $fs = 0.1;
 
 EPSILON = 0.01;
+MICRON = 0.001;
 PHI = (1+sqrt(5))/2;
 
 // filament metrics
@@ -91,6 +92,9 @@ function efloor(x, e=EPSILON) = e * floor(x/e);
 function tround(x) = eround(x, e=0.05);  // twentieths of a millimeter
 function tceil(x) = eceil(x, e=0.05);  // twentieths of a millimeter
 function tfloor(x) = efloor(x, e=0.05);  // twentieths of a millimeter
+function mround(x) = eround(x, e=MICRON);  // microns
+function mceil(x) = eceil(x, e=MICRON);  // microns
+function mfloor(x) = efloor(x, e=MICRON);  // microns
 
 // tidy measurements
 function vround(v) = [for (x=v) tround(x)];
@@ -109,12 +113,12 @@ let (v=is_list(size) ? [size.x, size.y] : [size, size]) [
     is_undef(wide) ? v.x : wide ? absmax(v.x, v.y) : absmin(v.x, v.y),
     is_undef(wide) ? v.y : wide ? absmin(v.x, v.y) : absmax(v.x, v.y),
 ];
-function volume(size, h=undef, wide=undef) =
+function volume(size, height=undef, wide=undef) =
 let (v=is_list(size) ? [size.x, size.y, size.z] : [size, size, size]) [
     // calculate volume with optional height, wide, or tall override
     is_undef(wide) ? v.x : wide ? absmax(v.x, v.y) : absmin(v.x, v.y),
     is_undef(wide) ? v.y : wide ? absmin(v.x, v.y) : absmax(v.x, v.y),
-    is_undef(h) ? v.z : h,
+    is_undef(height) ? v.z : height,
 ];
 
 // utility functions
@@ -124,11 +128,11 @@ function unit_axis(n) = [for (i=[0:2]) i==n ? 1 : 0];
 
 // TODO: review these
 function deck_box_volume(d) = [Vcard.y + 2*Rext, d, Hdeck];
-function tray_volume(h=1) =
-    [Vtray.x, Vtray.y, h*Vtray.z];
+function tray_volume(height=1) =
+    [Vtray.x, Vtray.y, height*Vtray.z];
 function deck_height(n=0, deck=1, gap=Dgap/2) =
     deck*(Hdeck+gap) + n*(Htray+gap);
-function card_pile_height(n, h=Hcard) = n*h;
+function card_pile_height(n, height=Hcard) = n*height;
 
 // transformations
 module colorize(c=undef, alpha=undef) {
@@ -136,14 +140,43 @@ module colorize(c=undef, alpha=undef) {
     if (is_undef(c) && is_undef(alpha)) children();
     else color(c, alpha) children();
 }
-module lean(h, d, amin=0) {
-    alean = max(acos(d/h), amin);
+module flatten(size, space) {
+    // shear and flatten with fixed sides (like flattening a cardboard box)
+    // TODO: handle low walls
+    v = volume(size);
+    dx = min(space - v.x, v.z);
+    a = acos(dx/v.z);
     mlean = [
-        [1, 0, cos(alean), 0],
+        [1, 0, cos(a), 0],
         [0, 1, 0, 0],
-        [0, 0, sin(alean), 0],
+        [0, 0, sin(a), 0],
     ];
     multmatrix(m=mlean) children();
+}
+module lean(size, space, a, enforce=false) {
+    // shear and rotate with fixed volume (like leaning cards against a box)
+    // TODO: handle low walls
+    // TODO: solve for a
+    v = volume(size);
+    A = 90 -a;
+    x = v.x/sin(A);
+    c = x + v.z*cos(A);
+    mshear = [
+        [1, 0, 0, v.x/2],
+        [0, 1, 0, 0],
+        [tan(a), 0, 1, v.x*tan(a)/2],
+    ];
+    mrotate = [
+        [cos(a), 0, sin(a), -v.x/2],
+        [0, 1, 0, 0],
+        [-sin(a), 0, cos(a), 0],
+    ];
+    multmatrix(m=mrotate)
+    multmatrix(m=mshear)
+    children();
+    // diagnostics: show how close the lean is to ideal
+    echo(a=a, footprint=mround(x), lean=mround(c), gap=mround(space-c));
+    if (enforce) assert(mround(space-c) == 0);
 }
 module raise(z=Hfloor+EPSILON) {
     translate([0, 0, z]) children();
@@ -221,11 +254,11 @@ module prism(size=undef, height=undef, r=undef, rint=undef, rext=undef,
         else square(area(v), center=true);
     }
 }
-module box_frame(size=Vgame, wall=Dwall, wrap=Hwrap) {
+module box_frame(size=Vgame, wall=Dwall, wrap=Hwrap, gap=Dgap) {
     // create the outline of a box with given interior and thickness
-    vint = is_list(size) ? size : [size, size, size];
+    vint = volume(size);
     vext = vint + [2*wall, 2*wall, wall];
-    dwall = wall - Dgap/2;  // shrink the wall to leave a small gap
+    dwall = wall - gap/2;  // shrink the wall to leave a small gap
     vcut = vext - [2*dwall, 2*dwall, 2*dwall];
     raise(vint.z - vext.z) difference() {
         prism(vext);
@@ -316,7 +349,7 @@ module tray_foot(cut=0) {
 }
 module card_well(h=1, slope=false, cut=Dcut) {
     // TODO: remove slope option
-    vtray = tray_volume(h=h);
+    vtray = tray_volume(height=h);
     shell = area(vtray);
     well = shell - 2 * area(Dwall);
     raise(Hfloor) {
@@ -354,7 +387,7 @@ module card_well(h=1, slope=false, cut=Dcut) {
 }
 module card_tray(h=1, cards=0, color=undef) {
     hfloor = max(Hfloor, 2.0*h/2);
-    vtray = tray_volume(h=h);
+    vtray = tray_volume(height=h);
     shell = [vtray.x, vtray.y];
     well = shell - 2 * area(Dwall);
     origin = [well.x/2 + Dwall - shell.x/2, 0];
@@ -370,7 +403,7 @@ module card_tray(h=1, cards=0, color=undef) {
         else children();
 }
 module draw_tray(h=2, cards=0, color=undef) {
-    vtray = tray_volume(h=h+1);
+    vtray = tray_volume(height=h+1);
     shell = [vtray.x, vtray.y];
     well = shell - 2 * area(Dwall);
     origin = [well.x/2 + Dwall - shell.x/2, 0];
@@ -447,7 +480,7 @@ module tray_divider(v=Vcard_divider, h=Hcard_divider, color=undef) {
     }
     translate([0, 0, h]) children();
 }
-module scoop_well(h, v, r0, r1, lip=Hfoot+Dgap, cut=Dcut) {
+module scoop_well(v, h, r0, r1, lip=Hfoot+Dgap, cut=Dcut) {
     hmax = h - lip;  // leave room for nesting feet
     rmax = min(v) / 4;  // limit radiuses to safe values
     rn0 = min(r0, rmax);
@@ -479,42 +512,24 @@ module token_tray(scoop=2*Rext, color=undef) {
             dva = (vtray - wella - walls) / 2;
             dvb = (wellb - vtray + walls) / 2;
             translate(dva)
-                scoop_well(vtray.z-Hfloor, wella, r0=Rint, r1=scoop);
+                scoop_well(wella, vtray.z-Hfloor, r0=Rint, r1=scoop);
             for (i=[-1,+1]) translate([i*dvb.x, dvb.y])
-                scoop_well(vtray.z-Hfloor, wellb, r0=Rint, r1=scoop);
+                scoop_well(wellb, vtray.z-Hfloor, r0=Rint, r1=scoop);
         }
         tray_feet_cut();
     }
     %raise() rotate(90) children();  // card stack
 }
 
-module raise_deck(n=0, deck=1, gap=Dgap/2) {
-    translate([0, 0, deck_height(n=n, deck=deck, gap=gap)]) children();
-}
-module layout_tray(n, rows=4, gap=Dgap) {
-    col = floor(n/rows);  // column number
-    row = floor(n-col*rows);  // row number
-    sx = 1 - 2*(col % 2);  // x side (-1 left / +1 right)
-    nx = sx * floor(col/2);  // x distance from center
-    ny = row + (1 - rows)/2;  // y distance from center
-    dy = Vgame.y / rows + gap;  // row height
-    dx = Vlong.x + gap;  // column width
-    origin = sx * [Dshort/2 + Vlong.x/2 + gap, 0];
-    a = rows==2 ? 90+sign(ny)*90 : -sx*90;
-    translate(origin + [nx*dx, ny*dy]) rotate(a) children();
-}
-module layout_deck(n, gap=Dgap) {
-    layout_tray(n=n, rows=2, gap=Dgap) children();
-}
-
-module layout_tool(v, h=Hfloor, r=Rext, font="Trebuchet MS:style=Bold") {
-    vtool = volume(v, h, wide=true);
-    label = str(v.x, "×", v.y);
-    lsize = min(10, 2/3*v.y);
+module layout_tool(size, height=Hfloor, r=Rext,
+                   font="Trebuchet MS:style=Bold") {
+    vtool = volume(size, height, wide=true);
+    label = str(size.x, "×", size.y);
+    lsize = min(10, 2/3*size.y);
     echo(vtool=vtool, label=label);
     difference() {
         prism(vtool, r=r);
-        raise(vtool.z - 1) prism(height=1+EPSILON)
+        raise(vtool.z - 1) prism(height=1+Dcut)
             text(label, size=lsize, font=font,
                 halign="center", valign="center");
     }
