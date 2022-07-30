@@ -140,43 +140,71 @@ module colorize(c=undef, alpha=undef) {
     if (is_undef(c) && is_undef(alpha)) children();
     else color(c, alpha) children();
 }
-module flatten(size, space) {
+module flatten(size, space=undef, a=undef) {
     // shear and flatten with fixed sides (like flattening a cardboard box)
-    // TODO: handle low walls
     v = volume(size);
-    dx = min(space - v.x, v.z);
-    a = acos(dx/v.z);
+    c = is_undef(space) ? v.x : max(space, v.x);
+    dx = min(c - v.x, v.x - EPSILON);
+    A = is_undef(a) ? acos(dx/v.z) : max(a, EPSILON);
+    x = v.x;
+    z = v.z*sin(A);
+    xc = x + v.z*cos(A);
     mlean = [
-        [1, 0, cos(a), 0],
+        [1, 0, -cos(A), xc-x],
         [0, 1, 0, 0],
-        [0, 0, sin(a), 0],
+        [0, 0, sin(A), 0],
     ];
     multmatrix(m=mlean) children();
+    // diagnostics: show dimensions and how close the volume fits the space
+    echo(A=A, footprint=mround(x), lean=mround(xc), area=tround(x*z));
+    if (space) echo(gap=mround(c-xc));
 }
-module lean(size, space, a, enforce=false) {
+module lean(size, space=undef, a=undef) {
     // shear and rotate with fixed volume (like leaning cards against a box)
-    // TODO: handle low walls
-    // TODO: solve for a
     v = volume(size);
-    A = 90 -a;
-    x = v.x/sin(A);
-    c = x + v.z*cos(A);
+    c = is_undef(space) ? v.x : max(space, v.x);
+    echo(v, c);
+    function solve() = let (
+        K = v.x*v.z,  // area of cross-section
+        B = -2*c,
+        C = c^2 - v.z^2,
+        E = v.x^2*v.z^2,
+        a = -3*B^2/8 + C,
+        b = B^3/8 - B*C/2,
+        g = -3*B^4/256 + C*B^2/16 + E,
+        p = -a^2/12 - g,
+        q = -a^3/108 + a*g/3 - b^2/8,
+        r = -q/2 + sqrt(q^2/4 + p^3/27),
+        u = r^(1/3),
+        y = -5/6*a + u - p/(3*u),
+        w = sqrt(a + 2*y),
+        v = sqrt(-(3*a + 2*y + 2*b/w)),
+        x = -B/4 + (w-v)/2)  // TODO: check that signs are always OK
+        echo(K=K, B=B, C=C, E=E)
+        echo(a=a, b=b, g=g)
+        echo(p=p, q=q, r=r, u=u, y=y)
+        echo(w=w, v=v, x=x)
+        x;
+    x = is_undef(a) ? solve() : v.x/sin(max(a, EPSILON));
+    A = is_undef(a) ? asin(v.x/x) : a;
+    z = v.z*sin(A);
+    xc = x + v.z*cos(A);
     mshear = [
-        [1, 0, 0, v.x/2],
+        [1, 0, 0, -v.x/2],
         [0, 1, 0, 0],
-        [tan(a), 0, 1, v.x*tan(a)/2],
+        [-1/tan(A), 0, 1, v.x/tan(A)/2],
     ];
     mrotate = [
-        [cos(a), 0, sin(a), -v.x/2],
+        [sin(A), 0, -cos(A), xc-v.x/2],
         [0, 1, 0, 0],
-        [-sin(a), 0, cos(a), 0],
+        [cos(A), 0, sin(A), 0],
     ];
     multmatrix(m=mrotate)
     multmatrix(m=mshear)
     children();
-    // diagnostics: show how close the lean is to ideal
-    echo(a=a, footprint=mround(x), lean=mround(c), gap=mround(space-c));
-    if (enforce) assert(mround(space-c) == 0);
+    // diagnostics: show dimensions and how close the volume fits the space
+    echo(A=A, footprint=mround(x), lean=mround(xc), area=tround(x*z));
+    if (space) echo(gap=mround(c-xc));
 }
 module raise(z=Hfloor+EPSILON) {
     translate([0, 0, z]) children();
