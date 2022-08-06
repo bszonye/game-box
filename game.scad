@@ -372,10 +372,13 @@ module tray_feet_cut(tray=Vtray, foot=Vfoot) {
             tray_foot(cut=Dcut);
 }
 module tray_foot(foot=Vfoot, cut=0) {
-    vleg = volume(foot, Hfloor/2) - volume(2*Rfoot, 0);
+    // creates feet for nesting trays, or set cut=Dcut to make the leg socket
+    hsocket = Hfloor/2;  // socket is half the depth of the tray floor
+    hleg = hsocket - Hflayer;  // leg is one print layer shorter
+    vleg = volume(foot, hleg) - volume(2*Rfoot, 0);
     if (cut) {
-        notch = vleg.z + Hflayer;
-        raise(-cut) prism(vleg, height=cut+notch);
+        hsocket = vleg.z + Hflayer;
+        raise(-cut) prism(vleg, height=cut+hsocket);
         %raise(-foot.z) tray_foot();
     } else {
         prism(foot, r=Rfoot);
