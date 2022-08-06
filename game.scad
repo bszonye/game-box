@@ -8,6 +8,7 @@ include <cards.scad>
 // TODO: redesign index holes
 // TODO: redesign tray feet
 // TODO: parameterize uses of Vcard, Vtray, etc.
+// TODO: capsule and semicapsule modules with cylinder height h and radius r
 
 // naming conventions
 // A  angle
@@ -74,9 +75,9 @@ Hdeck = 65.5;  // TODO: remove
 Vlongtray = [72, 144, Htray];  // TODO: remove
 // nesting feet (TODO: reshape, maybe to area(Vtray)/10)
 Rfoot = Rint - Dgap;  // concentric with Rint & Rext with nesting gap
-Dfoot = 10.0 - 2*Dgap;
 Hfoot = 1.0;
-echo(Rfoot=Rfoot, Dfoot=Dfoot, Hfoot=Hfoot);
+Vfoot = volume(Vtray/8, Hfoot);
+echo(Rfoot=Rfoot, Hfoot=Hfoot, Vfoot=Vfoot);
 
 // TODO: eliminate these
 Dlong = Vgame.y / 2;
@@ -144,7 +145,7 @@ module flatten(size, space=undef, a=undef) {
     // shear and flatten with fixed sides (like flattening a cardboard box)
     v = volume(size);
     c = is_undef(space) ? v.x : max(space, v.x);
-    dx = min(c - v.x, v.x - EPSILON);
+    dx = min(c - v.x, v.z - EPSILON);
     A = is_undef(a) ? acos(dx/v.z) : max(a, EPSILON);
     x = v.x;
     z = v.z*sin(A);
@@ -155,17 +156,13 @@ module flatten(size, space=undef, a=undef) {
         [0, 0, sin(A), 0],
     ];
     multmatrix(m=mlean) children();
-    // diagnostics: show dimensions and how close the volume fits the space
-    echo(A=A, footprint=mround(x), lean=mround(xc), area=tround(x*z));
-    if (space) echo(gap=mround(c-xc));
 }
 module lean(size, space=undef, a=undef) {
     // shear and rotate with fixed volume (like leaning cards against a box)
     v = volume(size);
     c = is_undef(space) ? v.x : max(space, v.x);
-    echo(v, c);
     function solve() = let (
-        K = v.x*v.z,  // area of cross-section
+        // x^4 + Bcx^3 + Cx^2 + E = 0, via Ferrari's method
         B = -2*c,
         C = c^2 - v.z^2,
         E = v.x^2*v.z^2,
@@ -179,11 +176,7 @@ module lean(size, space=undef, a=undef) {
         y = -5/6*a + u - p/(3*u),
         w = sqrt(a + 2*y),
         v = sqrt(-(3*a + 2*y + 2*b/w)),
-        x = -B/4 + (w-v)/2)  // TODO: check that signs are always OK
-        echo(K=K, B=B, C=C, E=E)
-        echo(a=a, b=b, g=g)
-        echo(p=p, q=q, r=r, u=u, y=y)
-        echo(w=w, v=v, x=x)
+        x = -B/4 + (w-v)/2)
         x;
     x = is_undef(a) ? solve() : v.x/sin(max(a, EPSILON));
     A = is_undef(a) ? asin(v.x/x) : a;
@@ -199,12 +192,7 @@ module lean(size, space=undef, a=undef) {
         [0, 1, 0, 0],
         [cos(A), 0, sin(A), 0],
     ];
-    multmatrix(m=mrotate)
-    multmatrix(m=mshear)
-    children();
-    // diagnostics: show dimensions and how close the volume fits the space
-    echo(A=A, footprint=mround(x), lean=mround(xc), area=tround(x*z));
-    if (space) echo(gap=mround(c-xc));
+    multmatrix(m=mrotate) multmatrix(m=mshear) children();
 }
 module raise(z=Hfloor+EPSILON) {
     translate([0, 0, z]) children();
@@ -269,7 +257,6 @@ module semistadium_fill(size) {
     s = h ? sign(v.y) : [v.x / r / 2, sign(v.y)];
     scale(s) semistadium(h, r);
 }
-// TODO: capsule and semicapsule modules with cylinder height h and radius r
 
 module prism(size=undef, height=undef, r=undef, rint=undef, rext=undef,
              scale=1, center=false) {
@@ -303,11 +290,30 @@ module box_frame(size=Vgame, wall=Dwall, wrap=Hwrap, gap=Dgap) {
     }
 }
 
+module floor_thumb_cut(size, d=Dthumb, r=Rext, mirror=false, cut=Dcut) {
+    // TODO: round off the sharp corner
+    v = volume(size);
+    dy = d/2;  // depth of thumb round
+    s = mirror ? [-1, +1] : [+1];
+    h = v.z + 2*cut;
+    raise(-cut) {
+        // thumb round
+        for (s=s) scale([1, s]) translate([0, -cut-v.y/2])
+            prism(height=h, rint=r) {
+                semistadium(dy - d/2 + cut, d=d);
+                translate([0, cut/2])
+                    square([d+2*r, cut-EPSILON], center=true);
+            }
+        // bottom index hole
+        prism(height=h) circle(d=d);
+
+    }
+}
 module wall_vee_cut(size, a=Avee, cut=Dcut) {
-    // TODO: round bottom of vee
-    span = size.x;
-    y0 = -2*Rext;
-    y1 = size.z;
+    v = volume(size);
+    span = v.x;
+    y0 = -2*Rext - EPSILON;
+    y1 = v.z;
     rise = y1;
     run = a == 90 ? 0 : rise/tan(a);
     x0 = span/2;
@@ -315,18 +321,19 @@ module wall_vee_cut(size, a=Avee, cut=Dcut) {
     a1 = (180-a)/2;
     x2 = x1 + Rext/tan(a1);
     x3 = x2 + Rext + EPSILON;  // needs +EPSILON for 90-degree angles
-    poly = [[x3, y0], [x3, y1], [x1, y1], [x0, 0], [x0, y0]];
-    rotate([90, 0, 0]) linear_extrude(size.y+2*cut, center=true)
+    poly = [
+        [x3, y0], [x3, y1], [x1, y1], [x0, 0],
+        [-x0, 0], [-x1, y1], [-x3, y1], [-x3, y0],
+    ];
+    rotate([90, 0, 0]) linear_extrude(v.y+2*cut, center=true)
     difference() {
         translate([0, y1/2+cut/2]) square([2*x2, y1+cut], center=true);
-        for (s=[-1,+1]) scale([s, 1]) hull() {
-            fillet(Rint, Rext) polygon(poly);
-            translate([x0, y0]) square([x3-x0, -y0]);
-        }
+        fillet(Rint, Rext) polygon(poly);
     }
 }
 
 module deck_box(d=Dlong, seed=undef, tiers=2, flip=false, color=undef) {
+    // TODO: shrink bottom hole so dividers don't fall in
     // TODO: add optional draw cut and tilt feet
     vbox = deck_box_volume(d);
     shell = area(vbox);
@@ -356,62 +363,39 @@ module creasing_tool(cards=10) {
     }
 }
 
-module tray_feet_cut(tray=Vtray, cut=Dcut) {
-    // d = distance from center of foot to edge of tray
-    // (half width of foot + external radius - concentric foot radius)
-    d = Dfoot/2 + Rext - Rfoot;
+module tray_feet_cut(tray=Vtray, foot=Vfoot) {
+    d = Rext - Rfoot;  // margin between foot and tray
+    o = (area(tray) - area(foot))/2 - area(d);
     for (i=[-1,+1]) for (j=[-1,+1])
-        translate([i * (tray.x/2-d), j * (tray.y/2-d)])
-            tray_foot(cut=cut);
+        translate([i * o.x, j * o.y])
+            tray_foot(cut=Dcut);
 }
-module tray_foot(cut=0) {
-    hleg = Hfloor - Hfoot;
-    dleg = Dfoot - 2*Rfoot;
+module tray_foot(foot=Vfoot, cut=0) {
+    vleg = volume(foot, Hfloor/2) - volume(2*Rfoot, 0);
     if (cut) {
-        raise(-cut) prism(dleg, height=hleg+cut+Hflayer);
-        %raise(-Hfoot) tray_foot();
+        notch = vleg.z + Hflayer;
+        raise(-cut) prism(vleg, height=cut+notch);
+        %raise(-foot.z) tray_foot();
     } else {
-        prism(Dfoot, height=Hfoot, r=Rfoot);
-        prism(dleg, height=Hfoot+hleg);
+        prism(foot, r=Rfoot);
+        raise(foot.z/2) prism(vleg, height=vleg.z+foot.z/2);
     }
 }
-module card_well(h=1, slope=false, cut=Dcut) {
-    // TODO: remove slope option
-    vtray = tray_volume(height=h);
-    shell = area(vtray);
-    well = shell - 2 * area(Dwall);
+module card_well(size=Vtray, slope=false, cut=Dcut) {
+    vtray = volume(size);
+    vwell = volume(area(vtray) - 2*area(Dwall), vtray.z-Hfloor);
     raise(Hfloor) {
-        hwell = vtray.z - Hfloor;
-        h1 = hwell - Hfoot;
-        v1 = well - 2 * area(Rint);
-        // if set, the well slopes inward to center the cards
-        v0 = slope ? Vcard : v1;
-        hull() {
-            raise(hwell) prism(well, height=cut, r=Rint);
-            minkowski() {
-                sphere(Rint);
-                hull() {
-                    raise(hwell-Rint) prism(v1, height=Rint);
-                    raise(Rint) prism(v0, height=h1-2*Rint);
-                }
-            }
-        }
+        // card well
+        prism(vwell, height=vwell.z+cut, r=Rint);
         // thumb vee
-        dy = vtray.z - Hfloor;
-        dx = vtray.x/2 - Dthumb/2 - Dstrut/2;
-        a = max(Avee, atan(dy/dx));
+        // TODO: limit top of vee more
+        span = Dthumb + 2*Rint;
+        dx = vtray.x/2 - span/2 - Dstrut/2;
+        a = max(Avee, atan(vwell.z/dx));
         translate([0, Dwall-vtray.y]/2)
-            wall_vee_cut([Dthumb, Dwall, vtray.z-Hfloor], a=a, cut=cut);
+            wall_vee_cut([span, Dwall, vtray.z-Hfloor], a=a, cut=cut);
     }
-    raise(-cut) linear_extrude(vtray.z+2*cut-EPSILON) {
-        // thumb round
-        xthumb = 2/3 * Dthumb;  // depth of thumb round
-        translate([0, -cut-vtray.y/2])
-            semistadium(xthumb-Dthumb/2+cut, d=Dthumb);
-        // bottom index hole
-        translate([0, xthumb/3])
-        stadium(xthumb, d=Dthumb);
-    }
+    floor_thumb_cut(vtray, cut=cut);
 }
 module card_tray(h=1, cards=0, color=undef) {
     hfloor = max(Hfloor, 2.0*h/2);
@@ -422,7 +406,7 @@ module card_tray(h=1, cards=0, color=undef) {
     dx = well.x + Dwall;
     colorize(color) difference() {
         prism(vtray, r=Rext);
-        card_well(h=h);
+        card_well(vtray);
         tray_feet_cut();
     }
 
@@ -472,8 +456,10 @@ module card_pile(n=10, up=false, color=undef) {
     raise(lift) rotate(spin) colorize(color) prism(vcard, height=hcards);
     translate(spin ? [hcards, 0, 0] : [0, 0, hcards]) children();
 }
-module deck_divider(v=Vcard_divider, h=Hcard_divider, up=false, color=undef) {
+module deck_divider(size=Vcard_divider, height=Hcard_divider,
+                    up=false, color=undef) {
     // vertical divider for wide deck boxes
+    v = volume(size, height);
     spin = up ? [0, 90, 0] : 0;
     lift = up ? v.x/2 : 0;
     raise(lift) rotate(spin) colorize(color) {
@@ -489,24 +475,20 @@ module deck_divider(v=Vcard_divider, h=Hcard_divider, up=false, color=undef) {
             [-x0, +y0], [-x0, +y1], [-x1, +y2],
             [-x1, -y2], [-x0, -y1], [-x0, -y0],
         ];
-        prism(height=h, r=Rext) polygon(poly);
+        prism(height=v.z, r=Rext) polygon(poly);
     }
-    translate(spin ? [h, 0, 0] : [0, 0, h]) children();
+    translate(spin ? [v.z, 0, 0] : [0, 0, v.z]) children();
 }
-module tray_divider(v=Vcard_divider, h=Hcard_divider, color=undef) {
+module tray_divider(size=Vcard_divider, height=Hcard_divider,
+                    index=Vtray.y, color=undef) {
     // horizontal divider for card trays
-    colorize(color) prism(height=h, r=Rext) difference() {
-        square(v, center=true);
-        xthumb = 2/3 * Dthumb;  // depth of thumb round
+    v = volume(size, height);
+    colorize(color) prism(height=v.z, r=Rext) difference() {
+        square(area(v), center=true);
         // match the index holes in the underlying card tray
-        // thumb round
-        translate([0, -Dcut - Vtray.y/2])
-            semistadium(xthumb-Dthumb/2+Dcut, d=Dthumb);
-        // bottom index hole
-        translate([0, xthumb/3])
-        stadium(xthumb, d=Dthumb);
+        projection() floor_thumb_cut([v.x, index, v.z], r=0, mirror=true);
     }
-    translate([0, 0, h]) children();
+    translate([0, 0, v.z]) children();
 }
 module scoop_well(v, h, r0, r1, lip=Hfoot+Dgap, cut=Dcut) {
     hmax = h - lip;  // leave room for nesting feet
@@ -568,14 +550,14 @@ module test_game_shapes() {
     module grid(i=0, j=0) {
         translate([100*i, 100*j]) children();
     }
-    grid(+0) deck_box(Dlong);
     grid(-1) token_tray();
     grid(-2) deck_divider();
     grid(-3) tray_divider();
     grid(-4) creasing_tool();
-    grid(+1) card_tray(h=1, cards=15);
-    grid(+2) card_tray(h=2, cards=30);
+    grid(+1) card_tray(h=1) %tray_divider();
+    grid(+2) card_tray(h=1, cards=15);
     grid(+3) draw_tray(h=2, cards=30);
+    grid(+4) deck_box(Dlong);
     grid(+0, -1.25) layout_tool([72, 20]);
 }
 
