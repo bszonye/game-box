@@ -371,18 +371,16 @@ module tray_feet_cut(tray=Vtray, foot=Vfoot) {
         translate([i * o.x, j * o.y])
             tray_foot(cut=Dcut);
 }
-module tray_foot(foot=Vfoot, cut=0) {
+module tray_foot(foot=Vfoot, r=Rfoot, cut=0) {
     // creates feet for nesting trays, or set cut=Dcut to make the leg socket
-    hsocket = Hfloor/2;  // socket is half the depth of the tray floor
-    hleg = hsocket - Hflayer;  // leg is one print layer shorter
-    vleg = volume(foot, hleg) - volume(2*Rfoot, 0);
+    vslot = volume(foot, Hfloor/2) - volume(2*r, 0);
+    vleg = vslot - volume(Dgap, Hflayer);  // fit tolerance + room for glue
     if (cut) {
-        hsocket = vleg.z + Hflayer;
-        raise(-cut) prism(vleg, height=cut+hsocket);
+        raise(-cut) prism(vslot, height=cut+vslot.z);
         %raise(-foot.z) tray_foot();
     } else {
-        prism(foot, r=Rfoot);
-        raise(foot.z/2) prism(vleg, height=vleg.z+foot.z/2);
+        prism(foot, r=r);
+        raise(foot.z-EPSILON) prism(vleg, height=vleg.z+EPSILON);
     }
 }
 module card_well(size=Vtray, height=undef, cut=Dcut) {
