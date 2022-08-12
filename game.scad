@@ -271,7 +271,7 @@ module box_frame(size=Vgame, wall=Dwall, wrap=Hwrap, gap=Dgap) {
     // create the outline of a box with given interior and thickness
     vint = volume(size);
     vext = vint + [2*wall, 2*wall, wall];
-    dwall = wall - gap/2;  // shrink the wall to leave a small gap
+    dwall = wall - gap;  // shrink the wall to leave a small gap
     vcut = vext - [2*dwall, 2*dwall, 2*dwall];
     raise(vint.z - vext.z) difference() {
         prism(vext);
@@ -474,13 +474,15 @@ module tray_divider(size=Vcard_divider, height=Hcard_divider,
     }
     translate([0, 0, v.z]) children();
 }
-module scoop_well(v, h, r0, r1, lip=Hfoot+Dgap, cut=Dcut) {
-    hmax = h - lip;  // leave room for nesting feet
+module scoop_well(size, height=undef, rint=Rint, rscoop=2*Rext, lip=Hfoot+Dgap,
+                  cut=Dcut) {
+    v = volume(size, height);
+    hmax = v.z - lip;  // leave room for nesting feet
     rmax = min(v) / 4;  // limit radiuses to safe values
-    rn0 = min(r0, rmax);
-    rn1 = min(r1, rmax);
+    rn0 = min(rint, rmax);
+    rn1 = min(rscoop, rmax);
     hull() {
-        raise(h) prism(v, height=cut, r=rn0);
+        raise(v.z) prism(v, height=cut, r=rn0);
         for (a=[0:$fa:90]) {
             cz = 1-cos(a);
             cx = 1-sin(a);
@@ -488,7 +490,7 @@ module scoop_well(v, h, r0, r1, lip=Hfoot+Dgap, cut=Dcut) {
             vtier = v - 2 * cx * area(rn1);
             rmax = min(vtier)/2 - EPSILON;
             rtier = min(rmax, cx * (rn1 - rn0) + rn0);
-            raise(htier) prism(vtier, height=h-htier+EPSILON, r=rtier);
+            raise(htier) prism(vtier, height=v.z-htier+EPSILON, r=rtier);
         }
     }
 }
@@ -506,9 +508,9 @@ module token_tray(scoop=2*Rext, color=undef) {
             dva = (vtray - wella - walls) / 2;
             dvb = (wellb - vtray + walls) / 2;
             translate(dva)
-                scoop_well(wella, vtray.z-Hfloor, r0=Rint, r1=scoop);
+                scoop_well(wella, vtray.z-Hfloor, rint=Rint, rscoop=scoop);
             for (i=[-1,+1]) translate([i*dvb.x, dvb.y])
-                scoop_well(wellb, vtray.z-Hfloor, r0=Rint, r1=scoop);
+                scoop_well(wellb, vtray.z-Hfloor, rint=Rint, rscoop=scoop);
         }
         tray_feet_cut();
     }
