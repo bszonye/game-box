@@ -259,7 +259,7 @@ module semistadium_fill(size) {
 module prism(size=undef, height=undef, r=undef, rint=undef, rext=undef,
              scale=1, center=false) {
     v = is_undef(size) ? undef : volume(size, height);
-    h = is_undef(height) ? size.z : height;
+    h = is_undef(height) ? v.z : height;
     ri = is_undef(rint) ? is_undef(r) ? 0 : r : rint;  // inside turns
     re = is_undef(rext) ? is_undef(r) ? 0 : r : rext;  // outside turns
     linear_extrude(height=h, scale=scale, center=center) fillet(ri, re) {
