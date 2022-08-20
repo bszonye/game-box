@@ -43,6 +43,7 @@ echo(Hflayer=Hflayer, Dfwidth=Dfwidth, Dfoverlap=eround(Dfoverlap, 0.001));
 // organizer metrics
 Dwall = 2.0;
 Hfloor = Dwall;
+Dthick = 3.0;  // for heavier, stiffer walls
 Dgap = 0.1;
 Dcut = eround(2/3*Dwall);  // cutting margin for negative spaces
 echo(Dwall=Dwall, Hfloor=Hfloor, Dgap=Dgap, Dcut=Dcut);
@@ -87,6 +88,13 @@ Vlong = deck_box_volume(Dlong);
 Dshort = Vgame.x - 4*Vlong.x;
 echo(cards=floor(Dlong / Hcard));
 
+// Ultimate Guard metrics (approximate inner dimensions)
+Vomnihive = [399, 106, 82];  // x2
+Homnihive_rail = 57;  // height of center & side rails
+Vomnihive_tray = [72, 96, 36];
+Homnihive_tray_notch = 23;  // height of thumb notch
+Varkhive = [303, 76.5, 102];
+Varkhive_rail = 43;  // height of side rails
 
 // minimum sizes and rounding
 function eround(x, e=EPSILON) = e * round(x/e);
@@ -333,7 +341,7 @@ module wall_vee_cut(size, a=Avee, cut=Dcut) {
     }
 }
 
-module deck_box(d=Dlong, seed=undef, tiers=2, flip=false, color=undef) {
+module deck_box(d=Dlong, color=undef) {
     // TODO: shrink bottom hole so dividers don't fall in
     // TODO: add optional draw cut and tilt feet
     vbox = deck_box_volume(d);
@@ -357,6 +365,7 @@ module deck_box(d=Dlong, seed=undef, tiers=2, flip=false, color=undef) {
 }
 module creasing_tool(cards=10) {
     // block for creasing index wrappers
+    // TODO: shrink or remove center hole
     margin = (Vcard.x - Dthumb) / 2;
     linear_extrude(height=card_pile_height(cards)) difference() {
         square(Vcard, center=true);
@@ -473,6 +482,44 @@ module tray_divider(size=Vcard_divider, height=Hcard_divider,
         projection() floor_thumb_cut([v.x, index, v.z], r=0, mirror=true);
     }
     translate([0, 0, v.z]) children();
+}
+module grid_divider(grid, size, height=undef, wall=Dthick, color=undef) {
+    // rectangular grid divider for boxes and trays
+    grid = area(grid);
+    v = volume(size, height);
+    function section(n, x) = (x + wall) / n;
+    s = [section(grid.x, v.x), section(grid.y, v.y)];
+    echo(grid=grid, v=v, s=s);
+    %prism(v);
+    for (i=[1:grid.x-1]) translate([i*s.x - v.x/2 - wall/2, 0])
+        prism([wall, v.y, v.z]);
+    for (i=[1:grid.y-1]) translate([0, i*s.y - v.y/2 - wall/2])
+        prism([v.x, wall, v.z]);
+}
+module bookend_divider(size, height=undef, wall=Dthick, a=Avee, color=undef) {
+    v = volume(size, height);
+    rext = wall + Rint;
+    y1 = wall + rext * tan((90-a)/2);
+    x1 = rext + rext / tan(a);
+    x2 = x1 + (v.z - y1) / tan(a);
+    vext = [x2+rext, v.y, v.z];
+    vint = vext - volume(2*wall, 0);
+    buttress = [
+        [-rext, -rext], [-rext, v.z], [x1, v.z], [x2, y1], [x2, -rext],
+    ];
+    colorize(color) intersection() {
+        prism(v);
+        rotate([90, 0, 0]) translate([-vext.x/2, 0])
+            prism(height=v.y, r=rext, center=true) polygon(buttress);
+        difference() {
+            prism(vext, r=rext);
+            raise(-rext) prism(vint, height=v.z+rext+Dcut, r=Rint);
+            vee = (vext.y - 2*rext) / 3;
+            hvee = vee * sin(a);
+            vcut = [vee, vext.x, hvee];
+            rotate(90) raise(v.z-hvee) wall_vee_cut(vcut);
+        }
+    }
 }
 module scoop_well(size, height=undef, rint=Rint, rscoop=2*Rext, lip=Hfoot+Dgap,
                   cut=Dcut) {
