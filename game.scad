@@ -51,8 +51,7 @@ echo(Rext=Rext, Rint=Rint);
 Avee = 60;  // default angle for notches and struts
 Adraw = 3;  // default slope for draw trays
 Dthumb = 25.0;  // index hole diameter
-Dstrut = 12.0;  // width of struts and corner braces (TODO: rework or remove)
-echo(Avee=Avee, Dthumb=Dthumb, Dstrut=Dstrut);
+echo(Avee=Avee, Dthumb=Dthumb);
 
 // game box interior
 Vgame = [288, 288, 69];  // typical FFG box interior
@@ -126,7 +125,7 @@ function deck_height(cards, height=Hcard) = cards*height;
 function deck_volume(cards, size=Vcard, height=Hcard) =
     volume(size, deck_height(cards, height));
 function deck_box_volume(d, size=Vcard, lip=Hlip) =
-    let (v=volume(size, d)) [v.y + 2*Rext, d, v.x + Hfloor + lip];
+    let (v=volume(size, d)) [d, v.y + 2*Rext, v.x + Hfloor + lip];
 
 // utility functions
 function sum(v) = v ? [for(p=v) 1]*v : 0;
@@ -336,15 +335,15 @@ module wall_vee_cut(size, a=Avee, cut=Dcut) {
 module deck_box(d=Dlong, color=undef) {
     // TODO: shrink bottom hole so dividers don't fall in
     // TODO: add optional draw cut, side feet, or bottom feet
-    // TODO: grow toward X axis, not Y
     vbox = deck_box_volume(d);
     shell = area(vbox);
     well = shell - 2 * area(Dwall);
-    hole = shell - 2 * area(Dstrut);
+    hole = shell - 2 * area(Dthumb);  // TODO: fine-tune hole dimensions
+    echo(well=well, hole=hole);
     // notch dimensions:
-    dtop = vbox.x - 2*Dstrut;  // corner supports
+    dtop = 2/3 * vbox.y;  // corner supports
     hvee = vbox.z - dtop/2 * sin(Avee);
-    vend = [dtop/2, vbox.y, vbox.z-hvee];
+    vend = [vbox.y/3, vbox.x, vbox.z-hvee];
     colorize(color) difference() {
         // outer shell
         prism(vbox, r=Rext);
@@ -353,7 +352,7 @@ module deck_box(d=Dlong, color=undef) {
         // base round
         raise(-Dgap) prism(hole, height=vbox.z, r=Dthumb/2);
         // side cuts
-        raise(hvee) wall_vee_cut(vend);  // end vee
+        raise(hvee) rotate(90) wall_vee_cut(vend);  // end vee
     }
 }
 
@@ -580,7 +579,7 @@ module test_game_shapes() {
     grid(+1) card_tray() %tray_divider();
     grid(+2) card_tray(cards=floor((Htray-Hfloor-Hfoot)/Hcard));
     grid(+3) draw_tray();
-    grid(+4) deck_box(Vgame.y/2);
+    grid(+4.5) deck_box(Vgame.y/2);
     grid(+0, -1.25) layout_tool([72, 20]);
 }
 
