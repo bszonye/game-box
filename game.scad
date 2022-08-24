@@ -5,8 +5,6 @@ include <cards.scad>
 // TODO: normalize size and height parameters
 // TODO: deck boxes from cosmic-box
 // TODO: hex boxes and grids
-// TODO: redesign index holes
-// TODO: redesign tray feet
 // TODO: parameterize uses of Vcard, Vtray, etc.
 // TODO: capsule and semicapsule modules with cylinder height h and radius r
 
@@ -70,23 +68,14 @@ Hcard = 0.525;  // generic card with Gamegenic prime sleeves
 echo(Vcard=Vcard, Hcard=Hcard);
 
 // container metrics
-echo(card_pile_height(60, Hcard_universal)+Hfloor+2*Hcard_divider);  // TODO
 Rfoot = Rint - Dgap;  // concentric with Rint & Rext with nesting gap
 Hfoot = 1.0;
 Htray = 13.0;
 Vtray = [72, 100, Htray];
 Vfoot = volume(Vtray/8, Hfoot);
-echo(Vtray=Vtray, Htray=Htray);
+Hlip = Rint + Hfoot;  // wall height above contents, scoops, etc.
+echo(Vtray=Vtray, Htray=Htray, Hlip=Hlip);
 echo(Vfoot=Vfoot, Hfoot=Hfoot, Rfoot=Rfoot);
-
-Hdeck = 65.5;  // TODO: remove
-Vlongtray = [72, 144, Htray];  // TODO: remove
-
-// TODO: eliminate these
-Dlong = Vgame.y / 2;
-Vlong = deck_box_volume(Dlong);
-Dshort = Vgame.x - 4*Vlong.x;
-echo(cards=floor(Dlong / Hcard));
 
 // Ultimate Guard metrics (approximate inner dimensions)
 Vomnihive = [399, 106, 82];  // x2
@@ -132,14 +121,17 @@ let (v=is_list(size) ? [size.x, size.y, size.z] : [size, size, size]) [
     is_undef(height) ? v.z : height,
 ];
 
+// deck & box dimensions
+function deck_height(cards, height=Hcard) = cards*height;
+function deck_volume(cards, size=Vcard, height=Hcard) =
+    volume(size, deck_height(cards, height));
+function deck_box_volume(d, size=Vcard, lip=Hlip) =
+    let (v=volume(size, d)) [v.y + 2*Rext, d, v.x + Hfloor + lip];
+
 // utility functions
 function sum(v) = v ? [for(p=v) 1]*v : 0;
 function swapxy(v) = [v.y, v.x, if (2<len(v)) for (i=[2:len(v)-1]) v[i]];
 function unit_axis(n) = [for (i=[0:2]) i==n ? 1 : 0];
-
-// TODO: review these
-function deck_box_volume(d) = [Vcard.y + 2*Rext, d, Hdeck];
-function card_pile_height(n, height=Hcard) = n*height;
 
 // transformations
 module colorize(c=undef, alpha=undef) {
@@ -343,7 +335,8 @@ module wall_vee_cut(size, a=Avee, cut=Dcut) {
 
 module deck_box(d=Dlong, color=undef) {
     // TODO: shrink bottom hole so dividers don't fall in
-    // TODO: add optional draw cut and tilt feet
+    // TODO: add optional draw cut, side feet, or bottom feet
+    // TODO: grow toward X axis, not Y
     vbox = deck_box_volume(d);
     shell = area(vbox);
     well = shell - 2 * area(Dwall);
@@ -361,15 +354,6 @@ module deck_box(d=Dlong, color=undef) {
         raise(-Dgap) prism(hole, height=vbox.z, r=Dthumb/2);
         // side cuts
         raise(hvee) wall_vee_cut(vend);  // end vee
-    }
-}
-module creasing_tool(cards=10) {
-    // block for creasing index wrappers
-    // TODO: shrink or remove center hole
-    margin = (Vcard.x - Dthumb) / 2;
-    linear_extrude(height=card_pile_height(cards)) difference() {
-        square(Vcard, center=true);
-        stadium_fill([Dthumb, Vcard.y - 2*margin]);
     }
 }
 
@@ -416,7 +400,7 @@ module card_tray(size=Vtray, height=undef, cards=0, color=undef) {
         tray_feet_cut();
     }
     %raise()  // card stack
-        if (cards) card_pile(cards) children();
+        if (cards) deck(cards) children();
         else children();
 }
 module draw_tray(size=Vtray, height=undef, slope=Adraw, color=undef) {
@@ -440,14 +424,21 @@ module draw_tray(size=Vtray, height=undef, slope=Adraw, color=undef) {
             wall_vee_cut([2*Rext, vtray.x + Dcut, vtray.z-hface]);
     }
 }
-module card_pile(n=10, up=false, color=undef) {
-    // TODO: generalize this & don't repeat so much code
-    hcards = card_pile_height(n);
-    vcard = area(Vcard);
+module deck(cards=10, size=Vcard, up=false, color=undef) {
+    v = deck_volume(cards, size);
     spin = up ? [0, 90, 0] : 0;
-    lift = up ? vcard.x/2 : 0;
-    raise(lift) rotate(spin) colorize(color) prism(vcard, height=hcards);
-    translate(spin ? [hcards, 0, 0] : [0, 0, hcards]) children();
+    lift = up ? v.x/2 : 0;
+    raise(lift) rotate(spin) colorize(color) prism(v, height=v.z);
+    translate(spin ? [v.z, 0, 0] : [0, 0, v.z]) children();
+}
+module creasing_tool(cards=10, size=Vcard, color=undef) {
+    // block for creasing index wrappers
+    v = deck_volume(cards, size);
+    echo(creasing_tool=v);
+    colorize(color) prism(height=v.z) difference() {
+        square(area(v), center=true);
+        circle(d=Dthumb);
+    }
 }
 module deck_divider(size=Vcard_divider, height=Hcard_divider,
                     up=false, color=undef) {
@@ -483,20 +474,24 @@ module tray_divider(size=Vcard_divider, height=Hcard_divider,
     }
     translate([0, 0, v.z]) children();
 }
-module grid_divider(grid, size, height=undef, wall=Dthick, color=undef) {
+module grid_divider(size=Vtray, height=undef, grid=[2, 3], wall=Dthick,
+                    color=undef) {
     // rectangular grid divider for boxes and trays
     grid = area(grid);
     v = volume(size, height);
     function section(n, x) = (x + wall) / n;
-    s = [section(grid.x, v.x), section(grid.y, v.y)];
-    echo(grid=grid, v=v, s=s);
+    cell = [section(grid.x, v.x), section(grid.y, v.y)];
+    echo(grid=grid, v=v, cell=cell);
     %prism(v);
-    for (i=[1:grid.x-1]) translate([i*s.x - v.x/2 - wall/2, 0])
-        prism([wall, v.y, v.z]);
-    for (i=[1:grid.y-1]) translate([0, i*s.y - v.y/2 - wall/2])
-        prism([v.x, wall, v.z]);
+    colorize(color) {
+        for (i=[1:grid.x-1]) translate([i*cell.x - v.x/2 - wall/2, 0])
+            prism([wall, v.y, v.z]);
+        for (i=[1:grid.y-1]) translate([0, i*cell.y - v.y/2 - wall/2])
+            prism([v.x, wall, v.z]);
+    }
 }
 module bookend_divider(size, height=undef, wall=Dthick, a=Avee, color=undef) {
+    // TODO: not stable enough, redesign or delete
     v = volume(size, height);
     rext = wall + Rint;
     y1 = wall + rext * tan((90-a)/2);
@@ -521,7 +516,7 @@ module bookend_divider(size, height=undef, wall=Dthick, a=Avee, color=undef) {
         }
     }
 }
-module scoop_well(size, height=undef, rint=Rint, rscoop=2*Rext, lip=Hfoot+Dgap,
+module scoop_well(size, height=undef, rint=Rint, rscoop=2*Rext, lip=Hlip,
                   cut=Dcut) {
     v = volume(size, height);
     hmax = v.z - lip;  // leave room for nesting feet
@@ -541,27 +536,21 @@ module scoop_well(size, height=undef, rint=Rint, rscoop=2*Rext, lip=Hfoot+Dgap,
         }
     }
 }
-module token_tray(scoop=2*Rext, color=undef) {
-    // TODO: configurable partitions
-    vtray = Vtray;
-    shell = [vtray.x, vtray.y];
-    origin = [Dwall-shell.x/2, Dwall-shell.y/2];
-    wella = [vtray.x-2*Dwall, Vlongtray.y - vtray.y - Dwall];
-    wellb = [(vtray.x-3*Dwall)/2, vtray.y - wella.y - 3*Dwall];
+module scoop_tray(size=Vtray, height=undef, grid=1, rscoop=2*Rext, lip=Hlip,
+                  color=undef) {
+    // tray with scoop bottom and optional grid of wells
+    grid = area(grid);
+    v = volume(size, height);
+    function section(n, x) = (x - Dwall) / n;
+    cell = [section(grid.x, v.x), section(grid.y, v.y)];
+    echo(grid=grid, v=v, cell=cell);
     colorize(color) difference() {
-        prism(vtray, r=Rext);
-        raise(Hfloor) {
-            walls = 2 * area(Dwall);
-            dva = (vtray - wella - walls) / 2;
-            dvb = (wellb - vtray + walls) / 2;
-            translate(dva)
-                scoop_well(wella, vtray.z-Hfloor, rint=Rint, rscoop=scoop);
-            for (i=[-1,+1]) translate([i*dvb.x, dvb.y])
-                scoop_well(wellb, vtray.z-Hfloor, rint=Rint, rscoop=scoop);
+        prism(v, r=Rext);
+        raise(Hfloor) for (i=[1/2:grid.x]) for (j=[1/2:grid.y]) {
+            translate(area(v)/2 - area(Dwall)/2 - [i*cell.x, j*cell.y])
+            scoop_well(cell - area(Dwall), height=v.z-Hfloor, lip=lip);
         }
-        tray_feet_cut();
     }
-    %raise() rotate(90) children();  // card stack
 }
 
 module layout_tool(size, height=Hfloor, r=Rext,
@@ -583,14 +572,15 @@ module test_game_shapes() {
     module grid(i=0, j=0) {
         translate([100*i, 100*j]) children();
     }
-    grid(-1) token_tray();
-    grid(-2) deck_divider();
-    grid(-3) tray_divider();
-    grid(-4) creasing_tool();
+    grid(-1) scoop_tray();
+    grid(-2) grid_divider();
+    grid(-3) deck_divider();
+    grid(-4) tray_divider();
+    grid(-5) creasing_tool();
     grid(+1) card_tray() %tray_divider();
     grid(+2) card_tray(cards=floor((Htray-Hfloor-Hfoot)/Hcard));
     grid(+3) draw_tray();
-    grid(+4) deck_box(Dlong);
+    grid(+4) deck_box(Vgame.y/2);
     grid(+0, -1.25) layout_tool([72, 20]);
 }
 
