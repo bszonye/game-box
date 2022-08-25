@@ -129,9 +129,9 @@ function deck_box_volume(n=0, size=Vcard, height=Hcard, width=0, lip=Hlip) =
          w = width ? width : v.z ? v.z + 2*Rext : Vtray.x,
          d = v.y + 2*Rext,
          h = v.x + Hfloor + lip)
-        echo(v=v, w=w, d=d, h=h)
-        echo(cards=floor((w-2*Rext)/height))
-        echo(piles=floor((w-2*Rext)/height)/12)
+        // echo(v=v, w=w, d=d, h=h)
+        // echo(cards=floor((w-2*Rext)/height))
+        // echo(piles=floor((w-2*Rext)/height)/12)
         [w, d, h];
 
 // utility functions
@@ -532,7 +532,7 @@ module scoop_well(size, height=undef, rint=Rint, rscoop=2*Rext, lip=Hlip,
                   cut=Dcut) {
     v = volume(size, height);
     hmax = v.z - lip;  // leave room for nesting feet
-    rmax = min(v) / 4;  // limit radiuses to safe values
+    rmax = min(v.x, v.y) / 4;  // limit radiuses to safe values
     rn0 = min(rint, rmax);
     rn1 = min(rscoop, rmax);
     hull() {
@@ -555,12 +555,12 @@ module scoop_tray(size=Vtray, height=undef, grid=1, rscoop=2*Rext, lip=Hlip,
     v = volume(size, height);
     function section(n, x) = (x - Dwall) / n;
     cell = [section(grid.x, v.x), section(grid.y, v.y)];
-    echo(grid=grid, v=v, cell=cell);
     colorize(color) difference() {
         prism(v, r=Rext);
         raise(Hfloor) for (i=[1/2:grid.x]) for (j=[1/2:grid.y]) {
             translate(area(v)/2 - area(Dwall)/2 - [i*cell.x, j*cell.y])
-            scoop_well(cell - area(Dwall), height=v.z-Hfloor, lip=lip);
+            scoop_well(cell - area(Dwall), height=v.z-Hfloor, rscoop=rscoop,
+                       lip=lip);
         }
     }
 }
