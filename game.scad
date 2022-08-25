@@ -183,7 +183,7 @@ module lean(size, height=undef, space=undef, angle=undef) {
         x = -B/4 + (w-v)/2)
         x;
     x = is_undef(angle) ? solve() : v.x/sin(max(angle, EPSILON));
-    A = is_undef(angle) ? asin(v.x/x) : angle;
+    A = is_undef(angle) ? asin(v.x/x) : max(angle, EPSILON);
     z = v.z*sin(A);
     xc = x + v.z*cos(A);
     mshear = [
@@ -192,7 +192,7 @@ module lean(size, height=undef, space=undef, angle=undef) {
         [-1/tan(A), 0, 1, v.x/tan(A)/2],
     ];
     mrotate = [
-        [sin(A), 0, -cos(A), xc-v.x/2],
+        [sin(A), 0, -cos(A), xc-x/2],
         [0, 1, 0, 0],
         [cos(A), 0, sin(A), 0],
     ];
