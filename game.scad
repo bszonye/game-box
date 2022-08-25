@@ -4,7 +4,6 @@ include <cards.scad>
 
 // TODO: deck boxes from cosmic-box
 // TODO: hex boxes and grids from calico-box and civ-box
-// TODO: capsule and semicapsule modules with cylinder height h and radius r
 
 // naming conventions
 // A  angle
@@ -261,6 +260,30 @@ module semistadium_fill(size) {
     h = max(abs(v.y) - r, 0);
     s = h ? sign(v.y) : [v.x / r / 2, sign(v.y)];
     scale(s) semistadium(h, r);
+}
+module capsule(h, r=undef, d=undef) {
+    // creates a capsule with cylinder height h and radius r,
+    // centered on the Z axis
+    radius = abs(is_undef(d) ? r : d/2);
+    height = abs(h);
+    hull() {
+        if (height) cylinder(h=h, r=radius, center=true);
+        for (i=[-1,+1]) translate([0, 0, i*height/2]) sphere(radius);
+    }
+}
+module semicapsule(h, r=undef, d=undef) {
+    // creates a semicapsule with cylinder height h and radius r,
+    // centered on the positive Z axis
+    radius = abs(is_undef(d) ? r : d/2);
+    s = h ? sign(h) : 1;  // there's no negative 0, so default to positive
+    hull() {
+        if (h) translate([0, 0, h/2])
+            cylinder(h=abs(h), r=radius, center=true);
+        translate([0, 0, h]) intersection() {
+            sphere(radius);
+            scale([1, 1, s]) cylinder(h=2*radius, r=2*radius);
+        }
+    }
 }
 
 module prism(size=undef, height=undef, r=undef, rint=undef, rext=undef,
