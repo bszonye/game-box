@@ -63,6 +63,11 @@ Vcard = [66, 91];  // Gamegenic gray sleeves
 Hcard = 0.525;  // generic card with Gamegenic prime sleeves
 echo(Vcard=Vcard, Hcard=Hcard);
 
+// chip metrics
+Dchip = 40.0;
+Rchip = Dchip / 2;
+Hchip = 3.4;
+
 // container metrics
 Rfoot = Rint - Dgap;  // concentric with Rint & Rext with nesting gap
 Hfoot = 1.0;
@@ -561,6 +566,27 @@ module scoop_tray(size=Vtray, height=undef, grid=1, rscoop=2*Rext, lip=Hlip,
             translate(area(v)/2 - area(Dwall)/2 - [i*cell.x, j*cell.y])
             scoop_well(cell - area(Dwall), height=v.z-Hfloor, rscoop=rscoop,
                        lip=lip);
+        }
+    }
+}
+
+module chip_tray(n=20, rows=5, color=undef) {
+    r = Rchip + Dgap;
+    h = eround(5/6*r, Hflayer);  // depth of slot
+    a = asin((r-h)/r);
+    w = 2*r*cos(a);  // width of slot at surface
+    overhang = r - w/2;
+    rail = 2*overhang + Rint;
+    slot = [w, Hchip*n + Rint, h];
+    well = [(slot.x + rail) * rows - rail, slot.y, slot.z];
+    v = well + [2*Dwall, 2*Dwall, Hfloor];
+    colorize(color) difference() {
+        prism(v, r=Rext);
+        for (i=[0:rows-1]) {
+            translate([slot.x/2 - well.x/2 + (slot.x + rail)*i, 0, r+Hfloor]) {
+                rotate([90, 0, 0]) cylinder(r=r, h=slot.y, center=true);
+                %rotate([90, 0, 0]) cylinder(r=Rchip, h=Hchip*n, center=true);
+            }
         }
     }
 }
