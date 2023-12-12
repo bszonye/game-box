@@ -369,14 +369,13 @@ module wall_vee_cut(size, height=undef, angle=Avee, axis=1, cut=Dcut) {
     }
 }
 
-module deck_box(n=0, size=Vcard, height=Hcard, width=0, lip=Hlip,
-                color=undef) {
-    // TODO: draw box with feet from cosmic-box
+module deck_box(n=0, size=Vcard, height=Hcard, width=0, lip=Hlip, draw=false,
+                feet=false, color=undef) {
     vbox = deck_box_volume(n=n, size=size, height=height, width=width);
     shell = area(vbox);
     well = shell - 2 * area(Dwall);
     hole = shell - 2 * area(shell.y/5);
-    colorize(color) difference() {
+    translate([vbox.x/2, 0]) colorize(color) difference() {
         // outer shell
         prism(vbox, r=Rext);
         // card well
@@ -386,15 +385,47 @@ module deck_box(n=0, size=Vcard, height=Hcard, width=0, lip=Hlip,
         if (3/5*Dthumb <= dh && dh <= Dthumb)
             raise(-Dgap) prism(height=vbox.z) stadium_fill(hole);
         else raise(-Dgap) prism(hole, height=vbox.z, r=Dthumb/2);
-        // side cuts
-        hvee = vbox.z/2;
-        zvee = vbox.z-hvee;
-        xvee = tround(zvee/sin(Avee));
-        dtop = 2*xvee;
-        vend = [xvee, vbox.x, zvee];
-        echo(vbox=vbox, dtop=dtop, zvee=zvee, xvee=xvee);
-        raise(hvee) rotate(90) wall_vee_cut(vend);  // end vee
+        if (draw) {
+            // thumb cut
+            vthumb = [Dthumb/sin(Avee), 2*Dwall, Dthumb];
+            translate([(Dwall-vbox.x)/2, 0, vbox.z-vthumb.z])
+                rotate(90) wall_vee_cut(vthumb);
+            // front cut
+            adraw = 75;
+            hvee = vbox.z - Hfloor;  // maximum height
+            dtop = vbox.y - 4*Rext;  // maximum width
+            dxvee = hvee / tan(adraw);
+            vdraw = [dtop - 2*dxvee, 2*Dwall, hvee];
+            translate([(vbox.x-Dwall)/2, 0, Hfloor])
+                rotate(90) wall_vee_cut(vdraw, angle=adraw);
+        } else {
+            // side cuts
+            hvee = vbox.z/2;
+            zvee = vbox.z-hvee;
+            xvee = tround(zvee/sin(Avee));
+            dtop = 2*xvee;
+            vend = [xvee, vbox.x, zvee];
+            echo(vbox=vbox, dtop=dtop, zvee=zvee, xvee=xvee);
+            raise(hvee) rotate(90) wall_vee_cut(vend);  // end vee
+        }
     }
+    // feet
+    if (feet) colorize(color) for (i=[-1,+1]) {
+        // center feet in the available space
+        yin = Dthumb/sin(Avee) + Rext/tan(Avee);
+        yout = vbox.y/2 - Rext;
+        yfoot = (yin + yout) / 2;
+        translate([Rext-Dwall, i*yfoot, vbox.z-Rext-Rint]) intersection() {
+            translate([-3/2*Rext, 0]) cube(3*Rext, center=true);
+            sphere(Rext);
+        }
+    }
+    translate([vbox.x + Dgap, 0]) children();
+}
+module draw_box(n=0, size=Vcard, height=Hcard, width=0, lip=Hlip, feet=true,
+                color=undef) {
+    deck_box(n=n, size=size, height=height, width=width, lip=lip, draw=true,
+             feet=feet, color=color) children();
 }
 
 module tray_feet_cut(size=Vtray, height=undef, foot=Vfoot) {
