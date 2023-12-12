@@ -429,12 +429,14 @@ module draw_box(n=0, size=Vcard, height=Hcard, width=0, lip=Hlip, feet=true,
 }
 
 module tray_feet_cut(size=Vtray, height=undef, foot=Vfoot) {
-    v = volume(size, height);
-    d = Rext - Rfoot;  // margin between foot and tray
-    o = (area(v) - area(foot))/2 - area(d);
-    for (i=[-1,+1]) for (j=[-1,+1])
-        translate([i * o.x, j * o.y])
-            tray_foot(cut=Dcut);
+    if (foot.z) {
+        v = volume(size, height);
+        d = Rext - Rfoot;  // margin between foot and tray
+        o = (area(v) - area(foot))/2 - area(d);
+        for (i=[-1,+1]) for (j=[-1,+1])
+            translate([i * o.x, j * o.y])
+                tray_foot(cut=Dcut);
+    }
 }
 module tray_foot(size=Vfoot, height=undef, r=Rfoot, cut=0) {
     // creates feet for nesting trays, or set cut=Dcut to make the leg socket
