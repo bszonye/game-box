@@ -58,11 +58,6 @@ Hmanual = 1.0;
 Hceiling = Vgame.z - eceil(Hmanual, 0.5);
 echo(Hmanual=Hmanual, Hceiling=Hceiling);
 
-// card metrics
-Vcard = [66, 91];  // Gamegenic gray sleeves
-Hcard = 0.525;  // generic card with Gamegenic prime sleeves
-echo(Vcard=Vcard, Hcard=Hcard);
-
 // chip metrics
 Dchip = 40.0;
 Rchip = Dchip / 2;

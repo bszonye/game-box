@@ -2,10 +2,6 @@
 
 INCH = 25.4;
 
-// bounding box for common sleeved cards
-Vcard_universal = [66, 94];  // fits sleeved standard CG & euro cards
-Hcard_universal = 0.525;  // typical single-sleeved thickness
-
 // Standard (poker size)
 Vcard_poker = [2.5*INCH, 3.5*INCH];
 Hcard_poker = 0.300;  // Bicycle deck measures ca. 16.0 mm / 54 cards
@@ -46,6 +42,7 @@ Vsleeve_yellow = [44, 67];  // Mini American
 Vsleeve_catan = [56, 82];  // Catan (English)
 // Sleeve Kings
 Vsleeve_euro = [61.5, 94];  // Standard European
+Vsleeve_mini_euro = [47, 70];  // Mini European
 Vsleeve_super_large = [104, 129];
 // thickness
 Hsleeve_none = 0;
@@ -58,6 +55,16 @@ Hsleeve_supreme = 0.23;  // 115 micron sleeves (Ultimate Guard supreme)
 Hsleeve_dragon = 0.24;  // 120 micron sleeves (Dragon Shield)
 Hsleeve_double = 0.30;  // 100 + 50 micron double sleeve
 
-// card dividers
+// bounding box for common sleeved cards
+Vcard_universal = [66, 94];  // fits sleeved standard CG & euro cards
+
+// card metrics: override these!
+Hcard_unsleeved = 0.325;  // typical unsleeved thickness
+Hcard_sleeve = Hsleeve_prime;
+Vcard = Vcard_universal;
+Hcard = Hcard_unsleeved + Hcard_sleeve;
+echo(Vcard=Vcard, Hcard=Hcard);
+
+// card dividers: override these!
 Vcard_divider = [67, 93];
 Hcard_divider = 1.0;
