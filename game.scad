@@ -340,7 +340,7 @@ module floor_thumb_cut(size, height=undef, d=Dthumb, r=Rext, mirror=false,
 
     }
 }
-module wall_vee_cut(size, height=undef, angle=Avee, axis=1, cut=Dcut) {
+module wall_vee_cut(size, height=undef, angle=Avee, cut=Dcut) {
     a0 = max(EPSILON, min(angle, 90));
     v = volume(size, height);
     run = a0 < 90 ? 1/tan(a0) : 0;
