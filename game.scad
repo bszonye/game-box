@@ -58,7 +58,15 @@ Hmanual = 1.0;
 Hceiling = Vgame.z - eceil(Hmanual, 0.5);
 echo(Hmanual=Hmanual, Hceiling=Hceiling);
 
-// chip metrics
+// component mentrics
+Hboard = 2.5;  // token & tile thickness
+// hex tiles
+Rhex = Dthumb;  // hex major radius = side length = grid spacing
+Rhex_group = Rhex;  // size of gridded hexes (may overflow spacing)
+Rhex_single = Rhex;  // size of ungridded hex tiles
+Rhex_merge = EPSILON;  // merge gridded hexes closer than this
+echo(Rhex=Rhex, Rhex_group=Rhex_group, Rhex_single=Rhex_single, Rhex_merge=Rhex_merge);
+// chips & counters
 Dchip = 40.0;
 Rchip = Dchip / 2;
 Hchip = 3.4;
@@ -72,14 +80,6 @@ Vfoot = volume(Vtray/8, Hfoot);
 Hlip = Rint + Hfoot;  // wall height above contents, scoops, etc.
 echo(Vtray=Vtray, Htray=Htray, Hlip=Hlip);
 echo(Vfoot=Vfoot, Hfoot=Hfoot, Rfoot=Rfoot);
-
-// Ultimate Guard metrics (approximate inner dimensions)
-Vomnihive = [399, 106, 82];  // x2
-Homnihive_rail = 57;  // height of center & side rails
-Vomnihive_tray = [72, 96, 36];
-Homnihive_tray_notch = 23;  // height of thumb notch
-Varkhive = [303, 76.5, 102];
-Varkhive_rail = 43;  // height of side rails
 
 // minimum sizes and rounding
 function eround(x, e=EPSILON) = e * round(x/e);
@@ -340,7 +340,7 @@ module floor_thumb_cut(size, height=undef, d=Dthumb, r=Rext, mirror=false,
 
     }
 }
-module wall_vee_cut(size, height=undef, angle=Avee, cut=Dcut) {
+module wall_vee_cut(size, height=undef, angle=Avee, cut=Dcut, fillet=true) {
     a0 = max(EPSILON, min(angle, 90));
     v = volume(size, height);
     run = a0 < 90 ? 1/tan(a0) : 0;
@@ -352,16 +352,24 @@ module wall_vee_cut(size, height=undef, angle=Avee, cut=Dcut) {
     x1 = x0 + y1*run;
     x2 = x0 + y2*run;
     x3 = x2 + Rext/tan(a1);
-    ptop = [
-        [x3, y3], [x3, y2], [x2, y2], [x1, y1],
-        [-x1, y1], [-x2, y2], [-x3, y2], [-x3, y3],
-    ];
-    pbot = [[x2, y2], [x0, 0], [-x0, 0], [-x2, y2]];
     d = v.y + 2*cut;
-    rotate([90, 0, 0]) {
-        prism(height=d, rint=Rext, center=true) polygon(ptop);
-        prism(height=d, rext=Rint, center=true) polygon(pbot);
+    if (fillet) {
+        ptop = [
+            [x3, y3], [x3, y2], [x2, y2], [x1, y1],
+            [-x1, y1], [-x2, y2], [-x3, y2], [-x3, y3],
+        ];
+        pbot = [[x2, y2], [x0, 0], [-x0, 0], [-x2, y2]];
+        rotate([90, 0, 0]) {
+            prism(height=d, rint=Rext, center=true) polygon(ptop);
+            prism(height=d, rext=Rint, center=true) polygon(pbot);
+        }
+    } else {
+        pcut = [[x2, y3], [x2, y2], [x0, 0], [-x0, 0], [-x2, y2], [-x2, y3]];
+        rotate([90, 0, 0]) prism(height=d, center=true) polygon(pcut);
     }
+}
+module hex_cut(size, height=undef, cut=Dcut) {
+    wall_vee_cut(size=size, height=height, angle=60, cut=cut, fillet=false);
 }
 
 module deck_box(n=0, size=Vcard, height=Hcard, width=0, lip=Hlip, draw=false,

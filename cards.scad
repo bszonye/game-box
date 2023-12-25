@@ -58,6 +58,14 @@ Hsleeve_double = 0.30;  // 100 + 50 micron double sleeve
 // bounding box for common sleeved cards
 Vcard_universal = [66, 94];  // fits sleeved standard CG & euro cards
 
+// deck box metrics (approximate inner dimensions)
+Vomnihive = [399, 106, 82];  // x2
+Homnihive_rail = 57;  // height of center & side rails
+Vomnihive_tray = [72, 96, 36];
+Homnihive_tray_notch = 23;  // height of thumb notch
+Varkhive = [303, 76.5, 102];
+Varkhive_rail = 43;  // height of side rails
+
 // card metrics: override these!
 Hcard_unsleeved = 0.325;  // typical unsleeved thickness
 Hcard_sleeve = Hsleeve_prime;
