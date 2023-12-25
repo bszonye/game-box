@@ -91,6 +91,9 @@ function tfloor(x) = efloor(x, e=0.05);  // twentieths of a millimeter
 function mround(x) = eround(x, e=MICRON);  // microns
 function mceil(x) = eceil(x, e=MICRON);  // microns
 function mfloor(x) = efloor(x, e=MICRON);  // microns
+function lround(x) = eround(x, e=Hflayer);  // layers
+function lceil(x) = eceil(x, e=Hflayer);  // layers
+function lfloor(x) = efloor(x, e=Hflayer);  // layers
 
 // tidy measurements
 function vround(v) = [for (x=v) tround(x)];
@@ -606,9 +609,40 @@ module scoop_tray(size=Vtray, height=undef, grid=1, rscoop=2*Rext, lip=Hlip,
     }
 }
 
+module hex(points=[[0, 0]], r=undef, grid=Rhex, merge=Rhex_merge) {
+    rhex = is_undef(r) ? len(points) == 1 ? Rhex_single : Rhex_group : r;
+    x1 = sin(60) * rhex;
+    y1 = rhex / 2;
+    phex = [[0, rhex], [-x1, y1], [-x1, -y1], [0, -rhex], [x1, -y1], [x1, y1]];
+    dx = sin(60) * grid;
+    dy = grid;
+    offset(delta=-merge) offset(delta=merge) for (p=points) {
+        translate([2 * (p.x + p.y/2) * dx, 1.5 * p.y * dy]) {
+            polygon(phex);
+        }
+    }
+}
+module hex_tile(points=[[0, 0]], n=0, height=Hboard, r=undef, grid=Rhex) {
+    h = n ? eceil(n * height) : height;
+    prism(height=h) hex(points, r=r, grid=grid);
+}
+module hex_tray(points=[[0, 0]], n=0, height=Hboard, r=undef, grid=Rhex,
+                lip=Hlip, hole=Dthumb) {
+    h = n ? eceil(n * height) + Hfloor + lip : height;
+    difference() {
+        prism(height=h, rint=Rint, rext=Rext)
+            offset(delta=Rext) hex(points, r=r, grid=grid);
+        raise(Hfloor) prism(height=h, rint=Rext, rext=Rint)
+            offset(delta=Rint) hex(points, r=r, grid=grid);
+        if (hole)
+            raise(-Dcut) prism(height=Hfloor+2*Dcut, r=Rext)
+            hex(points, r=hole/2, grid=grid);
+    }
+}
+
 module chip_tray(n=20, rows=5, color=undef) {
     r = Rchip + Dgap;
-    h = eround(5/6*r, Hflayer);  // depth of slot
+    h = lround(5/6*r);  // depth of slot
     a = asin((r-h)/r);
     w = 2*r*cos(a);  // width of slot at surface
     overhang = r - w/2;
