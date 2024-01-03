@@ -662,29 +662,40 @@ module chip_tray(n=20, rows=5, color=undef) {
     }
 }
 
-module tile_rack(n, size, angle=Arack, margin=Dwall, color=undef) {
+module tile_rack(n, size, angle=Arack, margin=Rext, lip=Hlip, color=undef) {
     vtile = volume(size, wide=true);
     echo(vtile=vtile);
     width = n * size.x + 2*margin;  // total width
-    hrest = max(vtile.x/2, vtile.y) + margin;  // height of tile rest
-    zrest = hrest * cos(angle);
-    xrest = hrest * sin(angle);
-    xbase = vtile.z * cos(angle) + margin;
-    depth = xrest + xbase + margin;
-    height = zrest + Hfloor;
+    // size (hypotenuse) of back and foot rests
+    back = max(vtile.x/2, vtile.y) + margin;
+    zback = round(back * cos(angle));
+    yback = zback/cos(angle) * sin(angle);
+    height = zback + Hfloor;
+    depth = lceil(yback + (vtile.z+Dgap)*cos(angle) + 2*margin);
+    yfoot = depth - yback - 2*margin;
+    zfoot = (yfoot)*tan(angle);
+    foot = yfoot/cos(angle);
+    zlip = lround(zfoot + lip);
+    echo(back=back, foot=foot);
+    echo(yback=yback, yfoot=yfoot);
+    echo(zback=zback, zfoot=zfoot, zlip=zlip);
+    echo(height=height, depth=depth);
     shell = [width, depth, height];
     colorize(color) difference() {
         prism(shell, r=margin);
-        translate([width/2+Dcut, xbase-depth/2, Hfloor]) rotate([angle, 0, 180])
-            cube([width+2*Dcut, (xrest+xbase+Dcut)*cos(angle), hrest+Dcut]);
-        zlip = Hfloor + (xbase-margin)*tan(angle);  // TODO
-        translate([-width/2, -depth/2-Dcut, zlip])
+        well = [width+2*Dcut, foot, back+Dcut];
+        translate([-width/2-Dcut, margin-depth/2, zfoot+Hfloor]) hull() {
+            cube(well);
+            rotate([-angle, 0, 0]) cube(well);
+        }
+        translate([-width/2, -depth/2-Dcut, zlip+Hfloor])
             cube([width+2*Dcut, margin+2*Dcut, height-zlip+Dcut]);
     }
+    %raise(Hfloor/2) cube([width, depth, Hfloor], center=true);
     %for (n=[1:n])
-        translate([n*vtile.x-width/2+margin, xbase-depth/2, Hfloor])
+        translate([n*vtile.x-width/2+margin, yfoot+margin-depth/2, Hfloor])
         rotate([angle, 0, 180]) cube([vtile.x, vtile.z, vtile.y]);
-    %translate([vtile.y/2, xbase-depth/2, Hfloor]) rotate([angle, 0, 180])
+    %translate([vtile.y/2, yfoot+margin-depth/2, Hfloor]) rotate([angle, 0, 180])
         cube([vtile.y, vtile.z, vtile.x]);
 }
 
