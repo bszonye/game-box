@@ -47,6 +47,7 @@ Rint = Rext - Dwall;  // internal corner radius
 echo(Rext=Rext, Rint=Rint);
 Avee = 60;  // default angle for notches and struts
 Adraw = 3;  // default slope for draw trays
+Arack = 15;  // default angle for card & tile racks
 Dthumb = 25.0;  // index hole diameter
 echo(Avee=Avee, Dthumb=Dthumb);
 
@@ -659,6 +660,43 @@ module chip_tray(n=20, rows=5, color=undef) {
             }
         }
     }
+}
+
+module tile_rack(n, size, angle=Arack, margin=Rext, lip=Hlip, color=undef) {
+    vtile = volume(size, wide=true);
+    echo(vtile=vtile);
+    width = n * size.x + 2*margin;  // total width
+    // size (hypotenuse) of back and foot rests
+    back = max(vtile.x/2, vtile.y) + margin;
+    zback = round(back * cos(angle));
+    yback = zback/cos(angle) * sin(angle);
+    height = zback + Hfloor;
+    depth = lceil(yback + (vtile.z+Dgap)*cos(angle) + 2*margin);
+    yfoot = depth - yback - 2*margin;
+    zfoot = (yfoot)*tan(angle);
+    foot = yfoot/cos(angle);
+    zlip = lround(zfoot + lip);
+    echo(back=back, foot=foot);
+    echo(yback=yback, yfoot=yfoot);
+    echo(zback=zback, zfoot=zfoot, zlip=zlip);
+    echo(height=height, depth=depth);
+    shell = [width, depth, height];
+    colorize(color) difference() {
+        prism(shell, r=margin);
+        well = [width+2*Dcut, foot, back+Dcut];
+        translate([-width/2-Dcut, margin-depth/2, zfoot+Hfloor]) hull() {
+            cube(well);
+            rotate([-angle, 0, 0]) cube(well);
+        }
+        translate([-width/2, -depth/2-Dcut, zlip+Hfloor])
+            cube([width+2*Dcut, margin+2*Dcut, height-zlip+Dcut]);
+    }
+    %raise(Hfloor/2) cube([width, depth, Hfloor], center=true);
+    %for (n=[1:n])
+        translate([n*vtile.x-width/2+margin, yfoot+margin-depth/2, Hfloor])
+        rotate([angle, 0, 180]) cube([vtile.x, vtile.z, vtile.y]);
+    %translate([vtile.y/2, yfoot+margin-depth/2, Hfloor]) rotate([angle, 0, 180])
+        cube([vtile.y, vtile.z, vtile.x]);
 }
 
 module layout_tool(size, height=Hfloor, r=Rext,
