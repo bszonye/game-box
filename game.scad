@@ -59,8 +59,11 @@ Hmanual = 1.0;
 Hceiling = Vgame.z - eceil(Hmanual, 0.5);
 echo(Hmanual=Hmanual, Hceiling=Hceiling);
 
-// component mentrics
-Hboard = 2.5;  // token & tile thickness
+// component metrics
+Hboard = 2.5;  // thickness of cardboard & similar flat components
+Hmat = Hboard;  // mats: trackers, player boards, holding areas
+Htile = Hboard;  // tiles: hexes, maps, plaques
+Htoken = Hboard;  // tokens: coins, points, units
 // hex tiles
 Rhex = Dthumb;  // hex major radius = side length = grid spacing
 Rhex_group = Rhex;  // size of gridded hexes (may overflow spacing)
@@ -623,11 +626,11 @@ module hex(points=[[0, 0]], r=undef, grid=Rhex, merge=Rhex_merge) {
         }
     }
 }
-module hex_tile(points=[[0, 0]], n=0, height=Hboard, r=undef, grid=Rhex) {
+module hex_tile(points=[[0, 0]], n=0, height=Htile, r=undef, grid=Rhex) {
     h = n ? eceil(n * height) : height;
     prism(height=h) hex(points, r=r, grid=grid);
 }
-module hex_tray(points=[[0, 0]], n=0, height=Hboard, r=undef, grid=Rhex,
+module hex_tray(points=[[0, 0]], n=0, height=Htile, r=undef, grid=Rhex,
                 lip=Hlip, hole=Dthumb) {
     h = n ? eceil(n * height) + Hfloor + lip : height;
     difference() {
