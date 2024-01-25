@@ -55,9 +55,6 @@ echo(Avee=Avee, Dthumb=Dthumb);
 Vgame = [288, 288, 69];  // typical FFG box interior
 Hwrap = 55;  // cover art wrap ends here, approximately
 echo(Vgame=Vgame, Hwrap=Hwrap);
-Hmanual = 1.0;
-Hceiling = Vgame.z - eceil(Hmanual, 0.5);
-echo(Hmanual=Hmanual, Hceiling=Hceiling);
 
 // component metrics
 Hboard = 2.5;  // thickness of cardboard & similar flat components
@@ -74,6 +71,12 @@ echo(Rhex=Rhex, Rhex_group=Rhex_group, Rhex_single=Rhex_single, Rhex_merge=Rhex_
 Dchip = 40.0;
 Rchip = Dchip / 2;
 Hchip = 3.4;
+
+// available space
+Hmanual = 1.0;
+Hceiling = Vgame.z - eceil(Hmanual, 0.5);  // vertical space under manuals
+Hmain = Hceiling;  // vertical space under manuals and boards
+echo(Hmanual=Hmanual, Hceiling=Hceiling, Hmain=Hmain);
 
 // container metrics
 Rfoot = Rint - Dgap;  // concentric with Rint & Rext with nesting gap
@@ -413,7 +416,6 @@ module deck_box(n=0, size=Vcard, height=Hcard, width=0, lip=Hlip, draw=false,
             zvee = min(vbox.z/2, dtop*sin(Avee)/2);
             hvee = vbox.z-zvee;
             xvee = tround(zvee/sin(Avee));
-            dtop = 2*xvee;
             vend = [xvee, vbox.x, zvee];
             echo(vbox=vbox, dtop=dtop, zvee=zvee, xvee=xvee);
             raise(hvee) rotate(90) wall_vee_cut(vend);  // end vee
@@ -478,12 +480,12 @@ module card_well(size=Vtray, height=undef, cut=Dcut) {
     }
     floor_thumb_cut(vtray, cut=cut);
 }
-module card_tray(size=Vtray, height=undef, cards=0, color=undef) {
+module card_tray(size=Vtray, height=undef, cards=0, feet=true, color=undef) {
     vtray = volume(size, height);
     colorize(color) difference() {
         prism(vtray, r=Rext);
         card_well(vtray);
-        tray_feet_cut();
+        if (feet && Hfoot) tray_feet_cut();
     }
     %raise()  // card stack
         if (cards) deck(cards) children();
