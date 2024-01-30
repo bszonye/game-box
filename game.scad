@@ -39,6 +39,7 @@ echo(Hflayer=Hflayer, Dfwidth=Dfwidth, Dfoverlap=eround(Dfoverlap, 0.001));
 Dwall = 2.0;
 Hfloor = Dwall;
 Dthick = 3.0;  // for heavier, stiffer walls
+Dthin = 1.0;  // for thin divider walls
 Dgap = 0.1;
 Dcut = eround(2/3*Dwall);  // cutting margin for negative spaces
 echo(Dwall=Dwall, Hfloor=Hfloor, Dgap=Dgap, Dcut=Dcut);
@@ -71,6 +72,8 @@ echo(Rhex=Rhex, Rhex_group=Rhex_group, Rhex_single=Rhex_single, Rhex_merge=Rhex_
 Dchip = 40.0;
 Rchip = Dchip / 2;
 Hchip = 3.4;
+// dice
+Ddice = 16;
 
 // available space
 Hmanual = 1.0;
@@ -612,6 +615,21 @@ module scoop_tray(size=Vtray, height=undef, grid=1, rscoop=2*Rext, lip=Hlip,
             scoop_well(cell - area(Dwall), height=v.z-Hfloor, rscoop=rscoop,
                        lip=lip);
         }
+    }
+}
+module dice_rack(n=1, size=Ddice, height=undef, div=Dwall, gap=Dgap, color=undef) {
+    vdice = volume(size);
+    well = area(vdice) + area(2*gap);
+    dx = well.x + div;
+    w = 2*Dwall + dx*n - div;
+    d = 2*Dwall + well.y;
+    h = is_undef(height) ? ceil(vdice.z / 3) + Hfloor : height;
+    v = [w, d, h];
+    echo(v=v);
+    colorize(color) difference() {
+        prism(v, r=Rext);
+        raise(Hfloor) for (i=[(1-n)/2:+n/2]) translate([dx*i, 0])
+            prism(well, r=Rint);
     }
 }
 
