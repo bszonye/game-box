@@ -47,6 +47,7 @@ Rext = 3.0;  // external corner radius
 Rint = Rext - Dwall;  // internal corner radius
 echo(Rext=Rext, Rint=Rint);
 Avee = 60;  // default angle for notches and struts
+Afoot = 60;  // default angle for box feet
 Adraw = 3;  // default slope for draw trays
 Arack = 15;  // default angle for card & tile racks
 Dthumb = 25.0;  // index hole diameter
@@ -90,6 +91,8 @@ Vfoot = volume(Vtray/8, Hfoot);
 Hlip = Rint + Hfoot;  // wall height above contents, scoops, etc.
 echo(Vtray=Vtray, Htray=Htray, Hlip=Hlip);
 echo(Vfoot=Vfoot, Hfoot=Hfoot, Rfoot=Rfoot);
+Vbox = Vtray;  // TODO
+echo(Vbox=Vbox);
 
 // minimum sizes and rounding
 function eround(x, e=EPSILON) = e * round(x/e);
@@ -104,6 +107,9 @@ function mfloor(x) = efloor(x, e=MICRON);  // microns
 function lround(x) = eround(x, e=Hflayer);  // layers
 function lceil(x) = eceil(x, e=Hflayer);  // layers
 function lfloor(x) = efloor(x, e=Hflayer);  // layers
+function pround(x) = eround(x, e=Dfpath);  // paths
+function pceil(x) = eceil(x, e=Dfpath);  // paths
+function pfloor(x) = efloor(x, e=Dfpath);  // paths
 
 // tidy measurements
 function vround(v) = [for (x=v) tround(x)];
@@ -630,21 +636,6 @@ module scoop_tray(size=Vtray, height=undef, grid=1, rscoop=2*Rext, lip=Hlip,
         }
     }
 }
-module dice_rack(n=1, size=Ddice, height=undef, div=Dwall, gap=Dgap, color=undef) {
-    vdice = volume(size);
-    well = area(vdice) + area(2*gap);
-    dx = well.x + div;
-    w = 2*Dwall + dx*n - div;
-    d = 2*Dwall + well.y;
-    h = is_undef(height) ? ceil(vdice.z / 3) + Hfloor : height;
-    v = [w, d, h];
-    echo(v=v);
-    colorize(color) difference() {
-        prism(v, r=Rext);
-        raise(Hfloor) for (i=[(1-n)/2:+n/2]) translate([dx*i, 0])
-            prism(well, r=Rint);
-    }
-}
 
 module hex(points=[[0, 0]], r=undef, grid=Rhex, merge=Rhex_merge) {
     rhex = is_undef(r) ? len(points) == 1 ? Rhex_single : Rhex_group : r;
@@ -735,15 +726,10 @@ module tile_rack(n, size, angle=Arack, margin=Rext, lip=Hlip, color=undef) {
         cube([vtile.y, vtile.z, vtile.x]);
 }
 
-Vbox = Vtray;  // TODO
-Dwall1 = 1*Dfpath;  // TODO
-Dwall2 = 2*Dfpath;  // TODO
-Dwall3 = 3*Dfpath;  // TODO
-Dwall4 = 4*Dfpath;  // TODO
-module corner_tabs(size, height=Hfoot, r=Rext, a=Avee, z=-Hflayer, slot=false) {
+module corner_tabs(size, height=Hfoot, r=Rext, a=Afoot, z=-Hflayer, slot=false) {
     h1 = 2*Hflayer;
     h2 = height + (slot ? 2*Hflayer : 0);
-    r1 = r - Dwall2 + (slot ? Dfpath/2 : 0);
+    r1 = r - 2*Dfpath + (slot ? Dfpath/2 : 0);
     r2 = r1 - (h2-h1)*cos(a);
     o = area(size)/2 - area(Rext);
     raise(z) for (i=[-1,+1]) for (j=[-1,+1]) scale([i, j]) translate(o) hull() {
@@ -751,24 +737,66 @@ module corner_tabs(size, height=Hfoot, r=Rext, a=Avee, z=-Hflayer, slot=false) {
         cylinder(h=h2, r1=r1, r2=r2);
     }
 }
-module box(size=Vbox, height=undef, grid=1, wall=Dwall4, div=Dwall3, r=Rext,
-               tabs=false, slots=false, color=undef) {
+module box(size=Vbox, height=undef, depth=undef, r=Rext,
+           grid=1, wall=undef, divider=undef,
+           hole=undef, tabs=false, slots=false, color=undef) {
+    minwall = tabs ? 4*Dfpath : Dfwidth;
+    wall = max(is_undef(wall) ? pround(Dwall) : wall, minwall);
+    divider = max(is_undef(divider) ? pround(Dwall) : divider, minwall);
+    echo(minwall=minwall, wall=wall, divider=divider);
+    // external dimensions
     vbox = volume(size, height);
-    grid = area(grid);
-    echo(vbox=vbox);
-    echo(tfloor(Dfwidth - Dfoverlap));
     shell = area(vbox);
-    well = area(shell) - area(2*wall);
+    // internal dimensions
+    depth = is_undef(depth) ? vbox.z - Hfloor : depth;
+    vwell = volume(area(vbox) - area(2*wall), depth);
+    // grid divisions
+    grid = area(grid);
+    dx = (vwell.x + divider) / grid.x;
+    dy = (vwell.y + divider) / grid.y;
+    vcell = vround([dx - divider, dy - divider, depth]);
+    zcell = vbox.z - depth;
+    echo(vbox=vbox, vwell=vwell, vcell=vcell, zcell=zcell);
+    // draw box
     colorize(color) difference() {
+        // exterior
         union() {
             prism(shell, height=vbox.z, r=r);
             if (tabs) raise(vbox.z) corner_tabs(shell, r=r);
         }
-        // TODO: optional floor height
-        raise(Hfloor) prism(well, height=vbox.z-Hfloor+Dcut, r=Dwall1);
+        // interior
+        for (i=[1/2:grid.x]) for (j=[1/2:grid.y])
+            translate([i*dx, j*dy] - area(vwell/2) - area(divider)/2) {
+                raise(zcell) prism(vcell, height=vcell.z+Dcut, r=Rext-wall);
+                if (hole) raise(-Dcut) cylinder(h=zcell+2*Dcut, d=hole);
+            }
+        // tab slots
         if (slots) corner_tabs(shell, r=r, slot=true);
+        // TODO: optional wall cuts e.g. for card drawing
     }
-    %corner_tabs(shell);
+    %if (slots) corner_tabs(shell);
+}
+module box_lid(size=Vbox, height=Hfloor, r=Rext, color=undef) {
+    vbox = volume(size, height);
+    colorize(color) difference() {
+        prism(vbox, r=r);
+        corner_tabs(vbox, r=r, slot=true);
+    }
+    %corner_tabs(vbox);
+}
+
+module dice_rack(n=1, size=Ddice, height=undef, wall=undef, divider=undef,
+                 gap=undef, color=undef) {
+    vdice = volume(size);
+    wall = is_undef(wall) ? pround(Dwall) : wall;
+    divider = is_undef(divider) ? wall : divider;
+    gap = is_undef(gap) ? ceil(wall) - wall : gap;
+    cell = area(vdice) + area(2*gap);
+    dx = cell.x + divider;
+    w = 2*wall + dx*n - divider;
+    d = 2*wall + cell.y;
+    h = is_undef(height) ? ceil(vdice.z / 3) + Hfloor : height;
+    box([w, d, h], grid=[n, 1], wall=wall, divider=divider, color=color);
 }
 
 module layout_tool(size, height=Hfloor, r=Rext,

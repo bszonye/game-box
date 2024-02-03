@@ -6,4 +6,4 @@ Qprint = Qfinal;  // or Qdraft
 
 // Yahtzee rack, sized for Altoids tin
 dice_rack(n=5, $fa=Qprint);
-*dice_rack(n=5, div=1.25, $fa=Qprint);
+*dice_rack(n=5, divider=1.25, $fa=Qprint);
