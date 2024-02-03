@@ -2,7 +2,6 @@
 
 include <cards.scad>
 
-// TODO: deck boxes from cosmic-box
 // TODO: hex boxes and grids from calico-box and civ-box
 
 // naming conventions
@@ -33,7 +32,8 @@ PHI = (1+sqrt(5))/2;
 Hflayer = 0.25;
 Dfwidth = 0.70;  // extrusion width
 Dfoverlap = Hflayer * (1 - PI/4);  // overlap between paths
-echo(Hflayer=Hflayer, Dfwidth=Dfwidth, Dfoverlap=eround(Dfoverlap, 0.001));
+Dfpath = tfloor(Dfwidth - Dfoverlap);  // width multiplier for walls
+echo(Hflayer=Hflayer, Dfwidth=Dfwidth, Dfoverlap=mround(Dfoverlap), Dfpath=Dfpath);
 
 // organizer metrics
 Dwall = 2.0;
@@ -295,6 +295,19 @@ module semicapsule(h, r=undef, d=undef) {
         translate([0, 0, h]) intersection() {
             sphere(radius);
             scale([1, 1, s]) cylinder(h=2*radius, r=2*radius);
+        }
+    }
+}
+module corner_round(size, r=Rext) {
+    // creates a square in the first quadrant with one rounded corner
+    v = area(size);
+    o = v - [r, r];
+    union() {
+        square([o.x, v.y]);
+        square([v.x, o.y]);
+        if (r) translate(o) intersection() {
+            circle(r=r);
+            square(r);
         }
     }
 }
@@ -720,6 +733,42 @@ module tile_rack(n, size, angle=Arack, margin=Rext, lip=Hlip, color=undef) {
         rotate([angle, 0, 180]) cube([vtile.x, vtile.z, vtile.y]);
     %translate([vtile.y/2, yfoot+margin-depth/2, Hfloor]) rotate([angle, 0, 180])
         cube([vtile.y, vtile.z, vtile.x]);
+}
+
+Vbox = Vtray;  // TODO
+Dwall1 = 1*Dfpath;  // TODO
+Dwall2 = 2*Dfpath;  // TODO
+Dwall3 = 3*Dfpath;  // TODO
+Dwall4 = 4*Dfpath;  // TODO
+module corner_tabs(size, height=Hfoot, r=Rext, a=Avee, z=-Hflayer, slot=false) {
+    h1 = 2*Hflayer;
+    h2 = height + (slot ? 2*Hflayer : 0);
+    r1 = r - Dwall2 + (slot ? Dfpath/2 : 0);
+    r2 = r1 - (h2-h1)*cos(a);
+    o = area(size)/2 - area(Rext);
+    raise(z) for (i=[-1,+1]) for (j=[-1,+1]) scale([i, j]) translate(o) hull() {
+        cylinder(h=h1, r=r1);
+        cylinder(h=h2, r1=r1, r2=r2);
+    }
+}
+module box(size=Vbox, height=undef, grid=1, wall=Dwall4, div=Dwall3, r=Rext,
+               tabs=false, slots=false, color=undef) {
+    vbox = volume(size, height);
+    grid = area(grid);
+    echo(vbox=vbox);
+    echo(tfloor(Dfwidth - Dfoverlap));
+    shell = area(vbox);
+    well = area(shell) - area(2*wall);
+    colorize(color) difference() {
+        union() {
+            prism(shell, height=vbox.z, r=r);
+            if (tabs) raise(vbox.z) corner_tabs(shell, r=r);
+        }
+        // TODO: optional floor height
+        raise(Hfloor) prism(well, height=vbox.z-Hfloor+Dcut, r=Dwall1);
+        if (slots) corner_tabs(shell, r=r, slot=true);
+    }
+    %corner_tabs(shell);
 }
 
 module layout_tool(size, height=Hfloor, r=Rext,
