@@ -47,7 +47,6 @@ Rext = 3.0;  // external corner radius
 Rint = Rext - Dwall;  // internal corner radius
 echo(Rext=Rext, Rint=Rint);
 Avee = 60;  // default angle for notches and struts
-Afoot = 60;  // default angle for box feet
 Adraw = 3;  // default slope for draw trays
 Arack = 15;  // default angle for card & tile racks
 Dthumb = 25.0;  // index hole diameter
@@ -85,6 +84,7 @@ echo(Hmanual=Hmanual, Hceiling=Hceiling, Hmain=Hmain);
 // container metrics
 Rfoot = Rint - Dgap;  // concentric with Rint & Rext with nesting gap
 Hfoot = 1.0;
+Htab = 1 - Hflayer;
 Htray = 13.0;
 Vtray = [72, 100, Htray];
 Vfoot = volume(Vtray/8, Hfoot);
@@ -726,20 +726,35 @@ module tile_rack(n, size, angle=Arack, margin=Rext, lip=Hlip, color=undef) {
         cube([vtile.y, vtile.z, vtile.x]);
 }
 
-module corner_tabs(size, height=Hfoot, r=Rext, a=Afoot, z=-Hflayer, slot=false) {
-    h1 = 2*Hflayer;
-    h2 = height + (slot ? 2*Hflayer : 0);
-    r1 = r - 2*Dfpath + (slot ? Dfpath/2 : 0);
-    r2 = r1 - (h2-h1)*cos(a);
-    o = area(size)/2 - area(Rext);
-    raise(z) for (i=[-1,+1]) for (j=[-1,+1]) scale([i, j]) translate(o) hull() {
-        cylinder(h=h1, r=r1);
-        cylinder(h=h2, r1=r1, r2=r2);
+module stacking_tabs(size, height=Htab, r=Rext, gap=Dgap, slot=false) {
+    v = area(size);
+    h1 = height/2 + EPSILON;
+    h2 = height + EPSILON;
+    d = 2*Dfpath;
+    w = v.x - 2*r - 2*d;
+    vtab = [d, w];
+    rtab = h2 - h1;
+    o = [v.x/2 - 3/2*d, w/2 - rtab];
+    raise(-EPSILON) for (i=[-1,+1]) translate([o.x*i, 0]) hull() {
+        if (slot) {
+            prism(height=h2) offset(r=gap) square(vtab, center=true);
+            prism(height=h2+2*Hflayer) square([EPSILON, w], center=true);
+        } else {
+            prism(vtab, height=h1);
+            prism(vtab - [2*rtab, 0], height=h1);
+            raise(h1) rotate([0, 90, 0]) for (j=[-1,+1]) translate([0, o.y*j])
+                cylinder(h=d, r=rtab, center=true);
+        }
     }
 }
 module box(size=Vbox, height=undef, depth=undef, r=Rext,
            grid=1, wall=undef, divider=undef,
            hole=undef, tabs=false, slots=false, color=undef) {
+    // convert tabs & slots to mm
+    tabs = is_num(tabs) ? tabs : tabs ? Htab : 0;  // default = Htab
+    slots = is_num(slots) ? slots : slots ? tabs : 0;  // default = tabs
+    echo(tabs=tabs, slots=slots);
+    // determine wall width
     minwall = tabs ? 4*Dfpath : Dfwidth;
     wall = max(is_undef(wall) ? pround(Dwall) : wall, minwall);
     divider = max(is_undef(divider) ? pround(Dwall) : divider, minwall);
@@ -762,7 +777,7 @@ module box(size=Vbox, height=undef, depth=undef, r=Rext,
         // exterior
         union() {
             prism(shell, height=vbox.z, r=r);
-            if (tabs) raise(vbox.z) corner_tabs(shell, r=r);
+            if (tabs) raise(vbox.z) stacking_tabs(shell, height=tabs, r=r);
         }
         // interior
         for (i=[1/2:grid.x]) for (j=[1/2:grid.y])
@@ -771,18 +786,19 @@ module box(size=Vbox, height=undef, depth=undef, r=Rext,
                 if (hole) raise(-Dcut) cylinder(h=zcell+2*Dcut, d=hole);
             }
         // tab slots
-        if (slots) corner_tabs(shell, r=r, slot=true);
+        if (slots) stacking_tabs(shell, height=slots, r=r, slot=true);
         // TODO: optional wall cuts e.g. for card drawing
     }
-    %if (slots) corner_tabs(shell);
+    // preview slot fit
+    %if (slots) stacking_tabs(shell, height=slots, r=r);
 }
-module box_lid(size=Vbox, height=Hfloor, r=Rext, color=undef) {
+module box_lid(size=Vbox, height=Hfloor, r=Rext, slots=Htab, color=undef) {
     vbox = volume(size, height);
     colorize(color) difference() {
         prism(vbox, r=r);
-        corner_tabs(vbox, r=r, slot=true);
+        stacking_tabs(vbox, height=slots, r=r, slot=true);
     }
-    %corner_tabs(vbox);
+    %stacking_tabs(vbox, height=slots, r=r);
 }
 
 module dice_rack(n=1, size=Ddice, height=undef, wall=undef, divider=undef,
