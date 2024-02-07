@@ -16,9 +16,6 @@ include <cards.scad>
 // V  vector  [W, H] or [W, D, H] or [x, y, z]
 // W  width
 
-// scale adjustments:
-// to counteract shrinkage, scale X & Y by 100.5% in slicer
-
 Qdraft = 15;  // 24 segments per circle (aligns with axes)
 Qfinal = 5;
 $fa = Qdraft;
@@ -46,11 +43,14 @@ echo(Dwall=Dwall, Hfloor=Hfloor, Dgap=Dgap, Dcut=Dcut);
 Rext = 3.0;  // external corner radius
 Rint = Rext - Dwall;  // internal corner radius
 echo(Rext=Rext, Rint=Rint);
-Avee = 60;  // default angle for notches and struts
+Avee = 60;  // default angle for notches (TODO: replace with Anotch)
+Ahex = 60;  // default angle for hexagons & triangles
+Anotch = 75;  // default angle for notches
+Arack = 75;  // default angle for card & tile racks
 Adraw = 3;  // default slope for draw trays
-Arack = 15;  // default angle for card & tile racks
+echo(Avee=Avee, Ahex=Ahex, Anotch=Anotch, Arack=Arack, Adraw=Adraw);
 Dthumb = 25.0;  // index hole diameter
-echo(Avee=Avee, Dthumb=Dthumb);
+echo(Dthumb=Dthumb);
 
 // game box interior
 Vgame = [288, 288, 69];  // typical FFG box interior
@@ -695,13 +695,13 @@ module tile_rack(n, size, angle=Arack, margin=Rext, lip=Hlip, color=undef) {
     width = n * size.x + 2*margin;  // total width
     // size (hypotenuse) of back and foot rests
     back = max(vtile.x/2, vtile.y) + margin;
-    zback = round(back * cos(angle));
-    yback = zback/cos(angle) * sin(angle);
+    zback = round(back * sin(angle));
+    yback = zback/tan(angle);
     height = zback + Hfloor;
-    depth = lceil(yback + (vtile.z+Dgap)*cos(angle) + 2*margin);
+    depth = lceil(yback + (vtile.z+Dgap)*sin(angle) + 2*margin);
     yfoot = depth - yback - 2*margin;
-    zfoot = (yfoot)*tan(angle);
-    foot = yfoot/cos(angle);
+    zfoot = (yfoot)/tan(angle);
+    foot = yfoot/sin(angle);
     zlip = lround(zfoot + lip);
     echo(back=back, foot=foot);
     echo(yback=yback, yfoot=yfoot);
@@ -713,7 +713,7 @@ module tile_rack(n, size, angle=Arack, margin=Rext, lip=Hlip, color=undef) {
         well = [width+2*Dcut, foot, back+Dcut];
         translate([-width/2-Dcut, margin-depth/2, zfoot+Hfloor]) hull() {
             cube(well);
-            rotate([-angle, 0, 0]) cube(well);
+            rotate([angle-90, 0, 0]) cube(well);
         }
         translate([-width/2, -depth/2-Dcut, zlip+Hfloor])
             cube([width+2*Dcut, margin+2*Dcut, height-zlip+Dcut]);
@@ -721,9 +721,9 @@ module tile_rack(n, size, angle=Arack, margin=Rext, lip=Hlip, color=undef) {
     %raise(Hfloor/2) cube([width, depth, Hfloor], center=true);
     %for (n=[1:n])
         translate([n*vtile.x-width/2+margin, yfoot+margin-depth/2, Hfloor])
-        rotate([angle, 0, 180]) cube([vtile.x, vtile.z, vtile.y]);
-    %translate([vtile.y/2, yfoot+margin-depth/2, Hfloor]) rotate([angle, 0, 180])
-        cube([vtile.y, vtile.z, vtile.x]);
+        rotate([90-angle, 0, 180]) cube([vtile.x, vtile.z, vtile.y]);
+    %translate([vtile.y/2, yfoot+margin-depth/2, Hfloor])
+        rotate([90-angle, 0, 180]) cube([vtile.y, vtile.z, vtile.x]);
 }
 
 function wall_thickness(wall=undef, tabs=false, default=Dwall) =
