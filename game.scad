@@ -726,24 +726,29 @@ module tile_rack(n, size, angle=Arack, margin=Rext, lip=Hlip, color=undef) {
         cube([vtile.y, vtile.z, vtile.x]);
 }
 
-module stacking_tabs(size, height=Htab, r=Rext, gap=Dgap, slot=false) {
+function wall_thickness(wall=undef, tabs=false, default=Dwall) =
+    let (minimum = tabs ? 4*Dfpath : Dfwidth)
+    max(is_undef(wall) ? pround(default) : wall, minimum);
+
+module stacking_tabs(size, height=Htab, r=Rext, gap=Dfpath/2, slot=false) {
     v = area(size);
-    h1 = height/2 + EPSILON;
-    h2 = height + EPSILON;
+    h = height + EPSILON;
     d = 2*Dfpath;
-    w = v.x - 2*r - 2*d;
-    vtab = [d, w];
-    rtab = h2 - h1;
-    o = [v.x/2 - 3/2*d, w/2 - rtab];
-    raise(-EPSILON) for (i=[-1,+1]) translate([o.x*i, 0]) hull() {
-        if (slot) {
-            prism(height=h2) offset(r=gap) square(vtab, center=true);
-            prism(height=h2+2*Hflayer) square([EPSILON, w], center=true);
-        } else {
-            prism(vtab, height=h1);
-            prism(vtab - [2*rtab, 0], height=h1);
-            raise(h1) rotate([0, 90, 0]) for (j=[-1,+1]) translate([0, o.y*j])
-                cylinder(h=d, r=rtab, center=true);
+    w = v.x - 2*r - 2*Dfpath;
+    o = [v.x/2 - 3/2*d, w/2 - height];
+    for (i=[-1,+1]) translate([o.x*i, 0, -EPSILON]) {
+        if (slot) hull() {
+            // widen slot and slightly lengthen it
+            vslot = [d+Dfpath, w+2*Dgap, h];
+            prism(vslot, r=gap);
+            // taper the space above the slot to ease bridging
+            prism([EPSILON, vslot.y, vslot.z+2*Hflayer]);
+        } else hull() {
+            // round the tab corners
+            prism([d, w-2*height, h]);
+            rotate([0, 90, 0]) for (j=[-1,+1]) translate([0, o.y*j])
+                prism(height=d, center=true)
+                    rotate(90) semistadium(h=EPSILON, r=height);
         }
     }
 }
@@ -755,10 +760,9 @@ module box(size=Vbox, height=undef, depth=undef, r=Rext,
     slots = is_num(slots) ? slots : slots ? tabs : 0;  // default = tabs
     echo(tabs=tabs, slots=slots);
     // determine wall width
-    minwall = tabs ? 4*Dfpath : Dfwidth;
-    wall = max(is_undef(wall) ? pround(Dwall) : wall, minwall);
-    divider = max(is_undef(divider) ? pround(Dwall) : divider, minwall);
-    echo(minwall=minwall, wall=wall, divider=divider);
+    wall = wall_thickness(wall, tabs || slots);
+    divider = wall_thickness(divider, tabs || slots, default=wall);
+    echo(wall=wall, divider=divider);
     // external dimensions
     vbox = volume(size, height);
     shell = area(vbox);
