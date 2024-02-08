@@ -58,6 +58,7 @@ Hwrap = 55;  // cover art wrap ends here, approximately
 echo(Vgame=Vgame, Hwrap=Hwrap);
 
 // component metrics
+Nplayers = undef;  // number of players (for mats & other per-player items)
 Hboard = 2.5;  // thickness of cardboard & similar flat components
 Hmat = Hboard;  // mats: trackers, player boards, holding areas
 Htile = Hboard;  // tiles: hexes, maps, plaques
@@ -401,7 +402,7 @@ module wall_vee_cut(size, height=undef, angle=Avee, cut=Dcut, fillet=true) {
     }
 }
 module hex_cut(size, height=undef, cut=Dcut) {
-    wall_vee_cut(size=size, height=height, angle=60, cut=cut, fillet=false);
+    wall_vee_cut(size=size, height=height, angle=Ahex, cut=cut, fillet=false);
 }
 
 module deck_box(n=0, size=Vcard, height=Hcard, width=0, lip=Hlip, draw=false,
@@ -639,10 +640,10 @@ module scoop_tray(size=Vtray, height=undef, grid=1, rscoop=2*Rext, lip=Hlip,
 
 module hex(points=[[0, 0]], r=undef, grid=Rhex, merge=Rhex_merge) {
     rhex = is_undef(r) ? len(points) == 1 ? Rhex_single : Rhex_group : r;
-    x1 = sin(60) * rhex;
+    x1 = sin(Ahex) * rhex;
     y1 = rhex / 2;
     phex = [[0, rhex], [-x1, y1], [-x1, -y1], [0, -rhex], [x1, -y1], [x1, y1]];
-    dx = sin(60) * grid;
+    dx = sin(Ahex) * grid;
     dy = grid;
     offset(delta=-merge) offset(delta=merge) for (p=points) {
         translate([2 * (p.x + p.y/2) * dx, 1.5 * p.y * dy]) {
@@ -726,15 +727,55 @@ module tile_rack(n, size, angle=Arack, margin=Rext, lip=Hlip, color=undef) {
         rotate([90-angle, 0, 180]) cube([vtile.y, vtile.z, vtile.x]);
 }
 
-function wall_thickness(wall=undef, tabs=false, default=Dwall) =
-    let (minimum = tabs ? 4*Dfpath : Dfwidth)
+function wall_thickness(wall=undef, thick=false, default=Dwall) =
+    let (minimum = thick ? 4*Dfpath : Dfwidth)
     max(is_undef(wall) ? pround(default) : wall, minimum);
 
+module notch_cut(size, height=undef, width=undef, angle=Anotch, r=Rext) {
+    // cut a vertical notch inside volume, given notch width & angle
+
+    module notch(v, a) {
+        // build a notch to the full extent of volume v
+        x2 = v.x/2 + r;  // top corner turnaround
+        x1 = v.x/2 - r/tan(90 - a/2);  // top corner
+        x0 = x1 - (a < 90 ? v.z/tan(a) : 0);  // bottom corner
+        h1 = v.z;  // top of notch
+        h2 = h1 + 2*r + EPSILON;  // top of turnaround
+        p = [
+            [x2, h2], [x2, h1], [x1, h1], [x0, 0],
+            [-x0, 0], [-x1, h1], [-x2, h1], [-x2, h2],
+        ];
+        echo(notch=v, angle=a);
+        translate([0, v.y/2+EPSILON]) rotate([90, 0, 0])
+            prism(height=v.y+2*EPSILON, r=r) polygon(p);
+    }
+    // set up notch parameters
+    vnotch = volume(size, height);
+    if (is_num(width)) {
+        // build the notch from bottom up
+        x0 = width/2;
+        // make sure the notch fits with the given base width and angle:
+        // first, find the widest angle that fits between the top corners
+        // https://math.stackexchange.com/a/4479659/88237
+        dc = [vnotch.x/2-x0, vnotch.z-r];  // widest possible corner position
+        dt = sqrt(dc.x^2 + dc.y^2 - r^2);  // distance from base to corner
+        smin = (dc.x*r + dc.y*dt) / (dc.x*dt - dc.y*r);  // tangent slope
+        // raise the notch angle if needed to fit
+        a = max(Anotch, atan(smin));
+        // find the full width of the notch at top
+        x1 = x0 + (a < 90 ? vnotch.z/tan(a) : 0);  // corner before filleting
+        x2 = x1 + r/tan(90 - a/2);  // highest point after filleting
+        notch([2*x2, vnotch.y, vnotch.z], a);
+    } else {
+        // build the notch from top down
+        notch(vnotch, angle);
+    }
+}
 module stacking_tabs(size, height=Htab, r=Rext, gap=Dfpath/2, slot=false) {
     v = area(size);
     h = height + EPSILON;
     d = 2*Dfpath;
-    w = v.x - 2*r - 2*Dfpath;
+    w = v.y - 2*r - 2*Dfpath;
     o = [v.x/2 - 3/2*d, w/2 - height];
     for (i=[-1,+1]) translate([o.x*i, 0, -EPSILON]) {
         if (slot) hull() {
@@ -754,13 +795,14 @@ module stacking_tabs(size, height=Htab, r=Rext, gap=Dfpath/2, slot=false) {
 }
 module box(size=Vbox, height=undef, depth=undef, r=Rext,
            grid=1, wall=undef, divider=undef,
-           hole=undef, tabs=false, slots=false, color=undef) {
+           hole=undef, tabs=false, slots=false, notch=false,
+           color=undef) {
     // convert tabs & slots to mm
     tabs = is_num(tabs) ? tabs : tabs ? Htab : 0;  // default = Htab
     slots = is_num(slots) ? slots : slots ? tabs : 0;  // default = tabs
     echo(tabs=tabs, slots=slots);
     // determine wall width
-    wall = wall_thickness(wall, tabs || slots);
+    wall = wall_thickness(wall, tabs || slots || notch);
     divider = wall_thickness(divider, tabs || slots, default=wall);
     echo(wall=wall, divider=divider);
     // external dimensions
@@ -791,7 +833,10 @@ module box(size=Vbox, height=undef, depth=undef, r=Rext,
             }
         // tab slots
         if (slots) stacking_tabs(shell, height=slots, r=r, slot=true);
-        // TODO: optional wall cuts e.g. for card drawing
+        // TODO: notch customization
+        if (notch) translate([0, wall/2-shell.y/2, zcell])
+            notch_cut([shell.x-2*Rext, wall, depth], width=notch);
+        // TODO: floor cutouts
     }
     // preview slot fit
     %if (slots) stacking_tabs(shell, height=slots, r=r);
