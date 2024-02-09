@@ -39,16 +39,17 @@ Dthick = 3.0;  // for heavier, stiffer walls
 Dthin = 1.0;  // for thin divider walls
 Dgap = 0.1;
 Dcut = eround(2/3*Dwall);  // cutting margin for negative spaces
-echo(Dwall=Dwall, Hfloor=Hfloor, Dgap=Dgap, Dcut=Dcut);
+Djoiner = EPSILON;  // merge gridded hexes closer than this
+echo(Dwall=Dwall, Hfloor=Hfloor, Dgap=Dgap, Dcut=Dcut, Djoiner=Djoiner);
 Rext = 3.0;  // external corner radius
 Rint = Rext - Dwall;  // internal corner radius
 echo(Rext=Rext, Rint=Rint);
-Avee = 60;  // default angle for notches (TODO: replace with Anotch)
+Avee = 60;  // default angle for notches (TODO: replace with Atab)
+Atab = 75;  // default angle for tabs & notches
 Ahex = 60;  // default angle for hexagons & triangles
-Anotch = 75;  // default angle for notches
 Arack = 75;  // default angle for card & tile racks
 Adraw = 3;  // default slope for draw trays
-echo(Avee=Avee, Ahex=Ahex, Anotch=Anotch, Arack=Arack, Adraw=Adraw);
+echo(Avee=Avee, Ahex=Ahex, Atab=Atab, Arack=Arack, Adraw=Adraw);
 Dthumb = 25.0;  // index hole diameter
 echo(Dthumb=Dthumb);
 
@@ -67,8 +68,7 @@ Htoken = Hboard;  // tokens: coins, points, units
 Rhex = Dthumb;  // hex major radius = side length = grid spacing
 Rhex_group = Rhex;  // size of gridded hexes (may overflow spacing)
 Rhex_single = Rhex;  // size of ungridded hex tiles
-Rhex_merge = EPSILON;  // merge gridded hexes closer than this
-echo(Rhex=Rhex, Rhex_group=Rhex_group, Rhex_single=Rhex_single, Rhex_merge=Rhex_merge);
+echo(Rhex=Rhex, Rhex_group=Rhex_group, Rhex_single=Rhex_single);
 // chips & counters
 Dchip = 40.0;
 Rchip = Dchip / 2;
@@ -638,7 +638,7 @@ module scoop_tray(size=Vtray, height=undef, grid=1, rscoop=2*Rext, lip=Hlip,
     }
 }
 
-module hex(points=[[0, 0]], r=undef, grid=Rhex, merge=Rhex_merge) {
+module hex(points=[[0, 0]], r=undef, grid=Rhex, merge=Djoiner) {
     rhex = is_undef(r) ? len(points) == 1 ? Rhex_single : Rhex_group : r;
     x1 = sin(Ahex) * rhex;
     y1 = rhex / 2;
@@ -727,50 +727,47 @@ module tile_rack(n, size, angle=Arack, margin=Rext, lip=Hlip, color=undef) {
         rotate([90-angle, 0, 180]) cube([vtile.y, vtile.z, vtile.x]);
 }
 
+module tab(size, width=undef, angle=Atab, rint=Rint, rext=Rext, joiner=Djoiner) {
+    // create a tab shape inside the given area
+    v = area(size);
+    // adjust the angle to fit the available space, if needed
+    function tab_angle(v, w) =
+        // find the widest angle that fits between the tab shoulders
+        // https://math.stackexchange.com/a/4479659/88237
+        let (dc = [v.x/2-width/2, v.y-rint],  // widest shoulder position
+             dt = sqrt(dc.x^2 + dc.y^2 - rint^2))  // corner -> shoulder tangent
+            atan((dc.x*rint + dc.y*dt) / (dc.x*dt - dc.y*rint));
+    min_angle = is_num(width) ? tab_angle(v, width) : EPSILON;
+    angle = max(angle, min_angle);
+    ws = rint/tan(90 - angle/2);  // shoulder width
+    we = (angle < 90 ? v.y/tan(angle) : 0);  // edge slope width
+    x0 = is_num(width) ? width/2 : v.x/2 - ws - we;  // tab corner
+    x1 = is_num(width) ? x0 + we : v.x/2 - ws;  // inside of shoulder
+    x2 = is_num(width) ? x1 + ws : v.x/2;  // outside of shoulder
+    x3 = x2 + rext;  // shoulder turnaround
+    y0 = -2*rext - EPSILON;  // bottom of turnaround
+    p = [
+        [x0, v.y], [x1, 0], [x3, 0], [x3, y0],
+        [-x3, y0], [-x3, 0], [-x1, 0], [-x0, v.y],
+    ];
+    echo(angle=angle, width=2*x0, base=2*x2);
+    intersection() {
+        fillet(rint, rext) polygon(p);
+        translate([0, v.y/2]) square([2*x2, v.y+2*joiner], center=true);
+    }
+}
+module wall_notch(size, height=undef, width=undef, angle=Atab,
+                  rint=Rint, rext=Rext, cut=Dcut) {
+    v = volume(size, height);
+    raise(v.z) rotate([-90, 0, 0])
+        prism(height=v.y+2*cut, center=true)
+        tab([v.x, v.z], width=width, angle=angle, rint=rext, rext=rint);
+}
+
 function wall_thickness(wall=undef, thick=false, default=Dwall) =
     let (minimum = thick ? 4*Dfpath : Dfwidth)
     max(is_undef(wall) ? pround(default) : wall, minimum);
 
-module notch_cut(size, height=undef, width=undef, angle=Anotch, r=Rext) {
-    // cut a vertical notch inside volume, given notch width & angle
-
-    module notch(v, a) {
-        // build a notch to the full extent of volume v
-        x2 = v.x/2 + r;  // top corner turnaround
-        x1 = v.x/2 - r/tan(90 - a/2);  // top corner
-        x0 = x1 - (a < 90 ? v.z/tan(a) : 0);  // bottom corner
-        h1 = v.z;  // top of notch
-        h2 = h1 + 2*r + EPSILON;  // top of turnaround
-        p = [
-            [x2, h2], [x2, h1], [x1, h1], [x0, 0],
-            [-x0, 0], [-x1, h1], [-x2, h1], [-x2, h2],
-        ];
-        echo(notch=v, angle=a);
-        translate([0, v.y/2+EPSILON]) rotate([90, 0, 0])
-            prism(height=v.y+2*EPSILON, r=r) polygon(p);
-    }
-    // set up notch parameters
-    vnotch = volume(size, height);
-    if (is_num(width)) {
-        // build the notch from bottom up
-        x0 = width/2;
-        // make sure the notch fits with the given base width and angle:
-        // first, find the widest angle that fits between the top corners
-        // https://math.stackexchange.com/a/4479659/88237
-        dc = [vnotch.x/2-x0, vnotch.z-r];  // widest possible corner position
-        dt = sqrt(dc.x^2 + dc.y^2 - r^2);  // distance from base to corner
-        smin = (dc.x*r + dc.y*dt) / (dc.x*dt - dc.y*r);  // tangent slope
-        // raise the notch angle if needed to fit
-        a = max(Anotch, atan(smin));
-        // find the full width of the notch at top
-        x1 = x0 + (a < 90 ? vnotch.z/tan(a) : 0);  // corner before filleting
-        x2 = x1 + r/tan(90 - a/2);  // highest point after filleting
-        notch([2*x2, vnotch.y, vnotch.z], a);
-    } else {
-        // build the notch from top down
-        notch(vnotch, angle);
-    }
-}
 module stacking_tabs(size, height=Htab, r=Rext, gap=Dfpath/2, slot=false) {
     v = area(size);
     h = height + EPSILON;
@@ -835,7 +832,7 @@ module box(size=Vbox, height=undef, depth=undef, r=Rext,
         if (slots) stacking_tabs(shell, height=slots, r=r, slot=true);
         // TODO: notch customization
         if (notch) translate([0, wall/2-shell.y/2, zcell])
-            notch_cut([shell.x-2*Rext, wall, depth], width=notch);
+            wall_notch([shell.x-2*Rext, wall, depth], width=notch);
         // TODO: floor cutouts
     }
     // preview slot fit
