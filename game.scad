@@ -240,7 +240,7 @@ module rounded_square(size, r=Rext) {
     if (min(v)/2 <= r) stadium_fill(v);
     else fillet(rext=r) square(v, center=true);
 }
-module corner_round(size, r=Rext) {
+module quarter_round(size, r=Rext) {
     // creates a square in the first quadrant with rounded outside corner
     v = area(size);
     o = v - [r, r];
