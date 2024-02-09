@@ -240,6 +240,19 @@ module rounded_square(size, r=Rext) {
     if (min(v)/2 <= r) stadium_fill(v);
     else fillet(rext=r) square(v, center=true);
 }
+module corner_round(size, r=Rext) {
+    // creates a square in the first quadrant with rounded outside corner
+    v = area(size);
+    o = v - [r, r];
+    if (r) hull() {
+        square([o.x, v.y]);
+        square([v.x, o.y]);
+        translate(o) intersection() {
+            circle(r=r);
+            square(r);
+        }
+    } else square(size);
+}
 module stadium(h, r=undef, d=undef) {
     // creates a stadium with rectangle height h and radius r,
     // centered on the Y axis
@@ -302,19 +315,6 @@ module semicapsule(h, r=undef, d=undef) {
         translate([0, 0, h]) intersection() {
             sphere(radius);
             scale([1, 1, s]) cylinder(h=2*radius, r=2*radius);
-        }
-    }
-}
-module corner_round(size, r=Rext) {
-    // creates a square in the first quadrant with one rounded corner
-    v = area(size);
-    o = v - [r, r];
-    union() {
-        square([o.x, v.y]);
-        square([v.x, o.y]);
-        if (r) translate(o) intersection() {
-            circle(r=r);
-            square(r);
         }
     }
 }
