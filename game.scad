@@ -38,8 +38,8 @@ Hfloor = Dwall;
 Dthick = 3.0;  // for heavier, stiffer walls
 Dthin = 1.0;  // for thin divider walls
 Dgap = 0.1;
-Dcut = eround(2/3*Dwall);  // cutting margin for negative spaces
-Djoiner = EPSILON;  // merge gridded hexes closer than this
+Dcut = eround(Dwall/3);  // cutting margin for negative spaces
+Djoiner = EPSILON;  // overlap margin for joining parts
 echo(Dwall=Dwall, Hfloor=Hfloor, Dgap=Dgap, Dcut=Dcut, Djoiner=Djoiner);
 Rext = 3.0;  // external corner radius
 Rint = Rext - Dwall;  // internal corner radius
@@ -351,8 +351,7 @@ module box_frame(size=Vgame, height=undef, wall=Dwall, wrap=Hwrap, gap=Dgap) {
     }
 }
 
-module floor_thumb_cut(size, height=undef, d=Dthumb, r=Rext, mirror=false,
-                       cut=Dcut) {
+module floor_thumb_cut(size, height=undef, d=Dthumb, r=Rext, mirror=false, cut=Dcut) {
     v = volume(size, height);
     dy = d/2;  // depth of thumb round
     s = mirror ? [-1, +1] : [+1];
@@ -508,7 +507,7 @@ module card_tray(size=Vtray, height=undef, cards=0, feet=true, color=undef) {
     colorize(color) difference() {
         prism(vtray, r=Rext);
         card_well(vtray);
-        if (feet && Hfoot) tray_feet_cut();
+        if (feet && Hfoot) tray_feet_cut(vtray);
     }
     %raise()  // card stack
         if (cards) deck(cards) children();
@@ -526,7 +525,7 @@ module draw_tray(size=Vtray, height=undef, slope=Adraw, color=undef) {
     colorize(color) difference() {
         prism(vtray, r=Rext);
         floor_thumb_cut(vtray);
-        tray_feet_cut();
+        tray_feet_cut(vtray);
         // sloped floor
         raise(Hfloor/2 + hface/2) multmatrix(m=mslope)
             prism(vwell, height=vtray.z+Dcut, r=Rint);
@@ -750,18 +749,36 @@ module tab(size, width=undef, angle=Atab, rint=Rint, rext=Rext, joiner=Djoiner) 
         [x0, v.y], [x1, 0], [x3, 0], [x3, y0],
         [-x3, y0], [-x3, 0], [-x1, 0], [-x0, v.y],
     ];
-    echo(angle=angle, width=2*x0, base=2*x2);
+    echo(a=angle, w=mround(2*x0), in=mround(2*x1), out=mround(2*x2));
     intersection() {
         fillet(rint, rext) polygon(p);
         translate([0, v.y/2]) square([2*x2, v.y+2*joiner], center=true);
     }
 }
-module wall_notch(size, height=undef, width=undef, angle=Atab,
-                  rint=Rint, rext=Rext, cut=Dcut) {
+module wall_notch(size, height=undef, width=undef, angle=Atab, rint=Rint, rext=Rext) {
     v = volume(size, height);
     raise(v.z) rotate([-90, 0, 0])
-        prism(height=v.y+2*cut, center=true)
+        prism(height=v.y+2*Dcut, center=true)
         tab([v.x, v.z], width=width, angle=angle, rint=rext, rext=rint);
+}
+module hex_notch(size, height=undef, angle=Ahex, r=Rext, wide=false, up=true) {
+    v = volume(size, height);
+    // When wide is false, the outer curve of the notch takes up space inside
+    // the volume.  When true, the curve extends outside of the volume.
+    ws = angle < 90 ? r/tan(90 - angle/2) : r;  // shoulder width
+    rhex = v.x/2 - (wide ? 0 : ws);  // maximum hex radius
+    hhex = rhex * sin(angle);  // maximum notch depth
+    // notch dimensions
+    d = min(hhex, up ? v.z : v.y);  // depth
+    w = 2*d/sin(angle) + 2*ws;  // width
+    h = 2*Dcut + (up ? v.y : v.z);  // thickness
+    z = up ? v.z : -Dcut + h/2;  // elevation
+    t = up ? -90 : 0;  // rotation
+    raise(z) rotate(t, [1, 0, 0]) prism(height=h, center=true)
+        tab([w, d], angle=angle, rint=r, rext=r);
+}
+module floor_notch(size, height=undef, angle=Ahex, r=Rext, wide=false) {
+    hex_notch(size, height, angle, r, wide, up=false);
 }
 
 function wall_thickness(wall=undef, thick=false, default=Dwall) =
@@ -770,11 +787,11 @@ function wall_thickness(wall=undef, thick=false, default=Dwall) =
 
 module stacking_tabs(size, height=Htab, r=Rext, gap=Dfpath/2, slot=false) {
     v = area(size);
-    h = height + EPSILON;
+    h = height + Djoiner;
     d = 2*Dfpath;
     w = v.y - 2*r - 2*Dfpath;
     o = [v.x/2 - 3/2*d, w/2 - height];
-    for (i=[-1,+1]) translate([o.x*i, 0, -EPSILON]) {
+    for (i=[-1,+1]) translate([o.x*i, 0, -Djoiner]) {
         if (slot) hull() {
             // widen slot and slightly lengthen it
             vslot = [d+Dfpath, w+2*Dgap, h];
@@ -786,35 +803,39 @@ module stacking_tabs(size, height=Htab, r=Rext, gap=Dfpath/2, slot=false) {
             prism([d, w-2*height, h]);
             rotate([0, 90, 0]) for (j=[-1,+1]) translate([0, o.y*j])
                 prism(height=d, center=true)
-                    rotate(90) semistadium(h=EPSILON, r=height);
+                    rotate(90) semistadium(h=Djoiner, r=height);
         }
     }
 }
 module box(size=Vbox, height=undef, depth=undef, r=Rext,
-           grid=1, wall=undef, divider=undef,
-           hole=undef, tabs=false, slots=false, notch=false,
-           color=undef) {
-    // convert tabs & slots to mm
-    tabs = is_num(tabs) ? tabs : tabs ? Htab : 0;  // default = Htab
-    slots = is_num(slots) ? slots : slots ? tabs : 0;  // default = tabs
-    echo(tabs=tabs, slots=slots);
-    // determine wall width
-    wall = wall_thickness(wall, tabs || slots || notch);
-    divider = wall_thickness(divider, tabs || slots, default=wall);
-    echo(wall=wall, divider=divider);
-    // external dimensions
+           grid=1, wall=undef, divider=undef, tabs=false, slots=false,
+           hole=false, notch=false, index=false, draw=false, feet=false,
+           thick=false, color=undef) {
+    function numeric_flag(x, default) = is_num(x) ? x : x ? default : 0;
+    // box dimensions
     vbox = volume(size, height);
     shell = area(vbox);
-    // internal dimensions
     depth = is_undef(depth) ? vbox.z - Hfloor : depth;
+    hfloor = vbox.z - depth;
+    // convert numeric flags to defaults
+    tabs = numeric_flag(tabs, default=Htab);
+    slots = numeric_flag(slots, default=tabs);
+    hole = numeric_flag(hole, default=Dthumb);
+    notch = numeric_flag(notch, default=Dthumb);  // +2*r/tan(90-Ahex/2));
+    index = numeric_flag(index, default=depth/2);
+    echo(tabs=tabs, slots=slots, hole=hole, notch=notch, index=index);
+    // determine wall width
+    thick = thick || tabs || slots || notch || draw;
+    wall = wall_thickness(wall, thick);
+    divider = wall_thickness(divider, thick, default=wall);
+    echo(wall=wall, divider=divider);
+    // internal dimensions & grid divisions
     vwell = volume(area(vbox) - area(2*wall), depth);
-    // grid divisions
     grid = area(grid);
     dx = (vwell.x + divider) / grid.x;
     dy = (vwell.y + divider) / grid.y;
     vcell = vround([dx - divider, dy - divider, depth]);
-    zcell = vbox.z - depth;
-    echo(vbox=vbox, vwell=vwell, vcell=vcell, zcell=zcell);
+    echo(vbox=vbox, vwell=vwell, vcell=vcell);
     // draw box
     colorize(color) difference() {
         // exterior
@@ -822,18 +843,30 @@ module box(size=Vbox, height=undef, depth=undef, r=Rext,
             prism(shell, height=vbox.z, r=r);
             if (tabs) raise(vbox.z) stacking_tabs(shell, height=tabs, r=r);
         }
+        // tab slots
+        if (slots) stacking_tabs(shell, height=slots, r=r, slot=true);
         // interior
         for (i=[1/2:grid.x]) for (j=[1/2:grid.y])
             translate([i*dx, j*dy] - area(vwell/2) - area(divider)/2) {
-                raise(zcell) prism(vcell, height=vcell.z+Dcut, r=Rext-wall);
-                if (hole) raise(-Dcut) cylinder(h=zcell+2*Dcut, d=hole);
+                raise(hfloor) prism(vcell, height=vcell.z+Dcut, r=r-wall);
+                if (hole) raise(-Dcut) cylinder(h=hfloor+2*Dcut, d=hole);
             }
-        // tab slots
-        if (slots) stacking_tabs(shell, height=slots, r=r, slot=true);
-        // TODO: notch customization
-        if (notch) translate([0, wall/2-shell.y/2, zcell])
-            wall_notch([shell.x-2*Rext, wall, depth], width=notch);
-        // TODO: floor cutouts
+        // side notch (for card trays)
+        if (notch) {
+            translate([0, wall/2-shell.y/2, hfloor])
+                wall_notch([shell.x-2*r, wall, depth], width=notch);
+            translate([0, -shell.y/2])
+                floor_notch(notch, height=vbox.z, wide=true);
+        }
+        // index notch (for long deck boxes)
+        if (index) raise(vbox.z- index) hex_notch([shell.x-2*r, shell.y, index]);
+        // draw notch (for narrow deck boxes)
+        if (draw) {
+            // TODO
+        }
+        if (feet) {
+            // TODO: side nubs to elevate draw boxes
+        }
     }
     // preview slot fit
     %if (slots) stacking_tabs(shell, height=slots, r=r);
