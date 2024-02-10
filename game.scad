@@ -13,6 +13,7 @@ include <cards.scad>
 // P  polygon (list of points)
 // Q  quality setting (draft, final)
 // R  radius
+// S  spin (rotation vector)
 // V  vector  [W, H] or [W, D, H] or [x, y, z]
 // W  width
 
@@ -49,6 +50,8 @@ Atab = 75;  // default angle for tabs & notches
 Ahex = 60;  // default angle for hexagons & triangles
 Arack = 75;  // default angle for card & tile racks
 Adraw = 3;  // default slope for draw trays
+Sup = [90, 0, 0];
+Sdown = [-90, 0, 0];
 echo(Avee=Avee, Ahex=Ahex, Atab=Atab, Arack=Arack, Adraw=Adraw);
 Dthumb = 25.0;  // index hole diameter
 echo(Dthumb=Dthumb);
@@ -726,59 +729,92 @@ module tile_rack(n, size, angle=Arack, margin=Rext, lip=Hlip, color=undef) {
         rotate([90-angle, 0, 180]) cube([vtile.y, vtile.z, vtile.x]);
 }
 
-module tab(size, width=undef, angle=Atab, rint=Rint, rext=Rext, joiner=Djoiner) {
-    // create a tab shape inside the given area
+// tabs & notches
+module tab(size, w1=undef, w2=undef, angle=Atab, rint=Rint, rext=Rext,
+           joiner=Djoiner) {
+    // create a tab shape inside a given area
+    //   size    maximum extent of tab, including base rounding
+    //   w1      base width
+    //   w2      top width
+    //   angle   rise angle
+    //   rint    base rounding
+    //   rext    top rounding
+    //   joiner  depth below baseline (for joining parts)
     v = area(size);
     // adjust the angle to fit the available space, if needed
     function tab_angle(v, w) =
         // find the widest angle that fits between the tab shoulders
         // https://math.stackexchange.com/a/4479659/88237
-        let (dc = [v.x/2-width/2, v.y-rint],  // widest shoulder position
+        let (dc = [v.x/2-w/2, v.y-rint],  // widest shoulder position
              dt = sqrt(dc.x^2 + dc.y^2 - rint^2))  // corner -> shoulder tangent
             atan((dc.x*rint + dc.y*dt) / (dc.x*dt - dc.y*rint));
-    min_angle = is_num(width) ? tab_angle(v, width) : EPSILON;
-    angle = max(angle, min_angle);
-    ws = rint/tan(90 - angle/2);  // shoulder width
-    we = (angle < 90 ? v.y/tan(angle) : 0);  // edge slope width
-    x0 = is_num(width) ? width/2 : v.x/2 - ws - we;  // tab corner
-    x1 = is_num(width) ? x0 + we : v.x/2 - ws;  // inside of shoulder
-    x2 = is_num(width) ? x1 + ws : v.x/2;  // outside of shoulder
-    x3 = x2 + rext;  // shoulder turnaround
+    min_angle = w2 ? tab_angle(v, w2) : EPSILON;
+    angle = w1 && w2 ? atan2(v.y, (w1-w2)/2) : max(angle, min_angle);
+    dx1 = rint/tan(90 - angle/2);  // distance x1-x0
+    dx2 = v.y/tan(angle);  // distance x2-x1
+    x1 = w1 ? w1/2 : w2 ? w2/2 + dx2 : v.x/2 - dx1;  // base corner
+    x2 = w2 ? w2/2 : x1 - dx2;  // top corner
+    x0 = x1 + dx1;  // base tangent
+    xmax = max(x0, x2);  // widest point
+    xt = xmax + rext;  // base turnaround
     y0 = -2*rext - EPSILON;  // bottom of turnaround
     p = [
-        [x0, v.y], [x1, 0], [x3, 0], [x3, y0],
-        [-x3, y0], [-x3, 0], [-x1, 0], [-x0, v.y],
+        [x2, v.y], [x1, 0], [xt, 0], [xt, y0],
+        [-xt, y0], [-xt, 0], [-x1, 0], [-x2, v.y],
     ];
-    echo(a=angle, w=mround(2*x0), in=mround(2*x1), out=mround(2*x2));
+    echo(a=angle, w0=mround(2*x0), w1=mround(2*x1), w2=mround(2*x2));
     intersection() {
         fillet(rint, rext) polygon(p);
-        translate([0, v.y/2]) square([2*x2, v.y+2*joiner], center=true);
+        translate([0, v.y/2]) square([2*xmax, v.y+2*joiner], center=true);
+        translate([0, v.y/2]) square([v.x, v.y+2*joiner], center=true);
     }
 }
-module wall_notch(size, height=undef, width=undef, angle=Atab, rint=Rint, rext=Rext) {
-    v = volume(size, height);
-    raise(v.z) rotate([-90, 0, 0])
-        prism(height=v.y+2*Dcut, center=true)
-        tab([v.x, v.z], width=width, angle=angle, rint=rext, rext=rint);
+module hex_tab(size=undef, rhex=undef, angle=Ahex, r=Rext, joiner=Djoiner) {
+    ws = r/tan(90 - angle/2);  // shoulder width
+    v = area(is_undef(size) ? 2*rhex + 2*ws : size);  // safe default
+    echo(v=v, rhex=rhex);
+    // proportions
+    // a < 90: w1 = 2, w2 = 1, d = tan(a)/2
+    // a = 90: w1 = 2, w2 = 2, d = 1/2
+    // a > 90: w1 = 2, w2 = 2 - 1/tan(a), d = 1/2
+    pd0 = angle < 90 ? 1/2 * tan(angle) : 1;
+    pd = min(1, pd0);
+    p2 = angle < 90 ? 1 + 2*(pd0-pd)/tan(angle) : 2 - 2/tan(angle);
+    p1 = 2;
+    a = atan2(pd, 1-p2/2);
+    // fit hex to available space
+    wmax = v.x - 2*ws;  // widest possible base
+    whex = rhex ? min(2*rhex, wmax) : wmax;  // limit to 2*rhex
+    xscale = p1 / max(p1, p2) * whex/2;
+    yscale = v.y / pd;
+    scale = min(xscale, yscale);
+    w1 = p1 * scale;
+    w2 = p2 * scale;
+    d = pd * scale;
+    tab([v.x, d], w1=w1, w2=w2, angle=a, rint=r, rext=r, joiner=joiner);
 }
-module hex_notch(size, height=undef, angle=Ahex, r=Rext, wide=false, up=true) {
-    v = volume(size, height);
-    // When wide is false, the outer curve of the notch takes up space inside
-    // the volume.  When true, the curve extends outside of the volume.
-    ws = angle < 90 ? r/tan(90 - angle/2) : r;  // shoulder width
-    rhex = v.x/2 - (wide ? 0 : ws);  // maximum hex radius
-    hhex = rhex * sin(angle);  // maximum notch depth
-    // notch dimensions
-    d = min(hhex, up ? v.z : v.y);  // depth
-    w = 2*d/sin(angle) + 2*ws;  // width
-    h = 2*Dcut + (up ? v.y : v.z);  // thickness
-    z = up ? v.z : -Dcut + h/2;  // elevation
-    t = up ? -90 : 0;  // rotation
-    raise(z) rotate(t, [1, 0, 0]) prism(height=h, center=true)
-        tab([w, d], angle=angle, rint=r, rext=r);
+module round_tab(size=undef, d=Dthumb, r=Rext, joiner=Djoiner) {
+    // TODO
 }
-module floor_notch(size, height=undef, angle=Ahex, r=Rext, wide=false) {
-    hex_notch(size, height, angle, r, wide, up=false);
+module notch(size, w1=undef, w2=undef, angle=Atab, rint=Rint, rext=Rext, cut=Dcut) {
+    // create a notch shape inside a given area
+    //   size   maximum extent of notch, including base rounding
+    //   w1     outer width
+    //   w2     inner width (minimum)
+    //   angle  rise angle
+    //   rint   inner rounding
+    //   rext   outer rounding
+    //   cut    depth below baseline (for clean cuts)
+    tab(size=size, w1=w1, w2=w2, angle=angle, rint=rext, rext=rint, joiner=cut);
+}
+module hex_notch(size=undef, rhex=undef, angle=Ahex, r=Rext, cut=Dcut) {
+    hex_tab(size=size, rhex=rhex, angle=angle, r=r, joiner=cut);
+}
+module round_notch(size=undef, d=Dthumb, r=Rext, cut=Dcut) {
+    round_tab(size=size, d=d, r=r, joiner=cut);
+}
+module punch(d, cut=Dcut, center=false) {
+    raise(-cut) prism(height=d+2*cut, center=center) children();
 }
 
 function wall_thickness(wall=undef, thick=false, default=Dwall) =
@@ -814,7 +850,6 @@ module box(size=Vbox, height=undef, depth=undef, r=Rext,
     function numeric_flag(x, default) = is_num(x) ? x : x ? default : 0;
     // box dimensions
     vbox = volume(size, height);
-    shell = area(vbox);
     depth = is_undef(depth) ? vbox.z - Hfloor : depth;
     hfloor = vbox.z - depth;
     // convert numeric flags to defaults
@@ -830,6 +865,7 @@ module box(size=Vbox, height=undef, depth=undef, r=Rext,
     divider = wall_thickness(divider, thick, default=wall);
     echo(wall=wall, divider=divider);
     // internal dimensions & grid divisions
+    vcore = volume(area(vbox) - area(2*r), depth);
     vwell = volume(area(vbox) - area(2*wall), depth);
     grid = area(grid);
     dx = (vwell.x + divider) / grid.x;
@@ -840,11 +876,11 @@ module box(size=Vbox, height=undef, depth=undef, r=Rext,
     colorize(color) difference() {
         // exterior
         union() {
-            prism(shell, height=vbox.z, r=r);
-            if (tabs) raise(vbox.z) stacking_tabs(shell, height=tabs, r=r);
+            prism(vbox, r=r);
+            if (tabs) raise(vbox.z) stacking_tabs(vbox, height=tabs, r=r);
         }
         // tab slots
-        if (slots) stacking_tabs(shell, height=slots, r=r, slot=true);
+        if (slots) stacking_tabs(vbox, height=slots, r=r, slot=true);
         // interior
         for (i=[1/2:grid.x]) for (j=[1/2:grid.y])
             translate([i*dx, j*dy] - area(vwell/2) - area(divider)/2) {
@@ -852,14 +888,15 @@ module box(size=Vbox, height=undef, depth=undef, r=Rext,
                 if (hole) raise(-Dcut) cylinder(h=hfloor+2*Dcut, d=hole);
             }
         // side notch (for card trays)
-        if (notch) {
-            translate([0, wall/2-shell.y/2, hfloor])
-                wall_notch([shell.x-2*r, wall, depth], width=notch);
-            translate([0, -shell.y/2])
-                floor_notch(notch, height=vbox.z, wide=true);
+        if (notch) translate([0, -vbox.y/2]) {
+            punch(vbox.z) hex_notch([vcore.x, vcore.y/2], rhex=notch/2);
+            raise(vbox.z) rotate(Sdown) punch(wall)
+                notch([vcore.x, depth], w2=notch);
+                // hex_notch([vcore.x, depth]);
         }
         // index notch (for long deck boxes)
-        if (index) raise(vbox.z- index) hex_notch([shell.x-2*r, shell.y, index]);
+        if (index) translate([0, -vbox.y/2, vbox.z])
+            rotate(Sdown) punch(vbox.y) hex_notch([vcore.x, index]);
         // draw notch (for narrow deck boxes)
         if (draw) {
             // TODO
@@ -869,7 +906,7 @@ module box(size=Vbox, height=undef, depth=undef, r=Rext,
         }
     }
     // preview slot fit
-    %if (slots) stacking_tabs(shell, height=slots, r=r);
+    %if (slots) stacking_tabs(vbox, height=slots, r=r);
 }
 module box_lid(size=Vbox, height=Hfloor, r=Rext, slots=Htab, color=undef) {
     vbox = volume(size, height);
