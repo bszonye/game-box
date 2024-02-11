@@ -414,6 +414,7 @@ module deck_box(n=0, size=Vcard, height=Hcard, width=0, lip=Hlip, draw=false,
     shell = area(vbox);
     well = shell - 2 * area(Dwall);
     hole = shell - 2 * area(shell.y/5);
+    echo(vbox=vbox);
     translate([vbox.x/2, 0]) colorize(color) difference() {
         // outer shell
         prism(vbox, r=Rext);
@@ -835,15 +836,8 @@ module stacking_tabs(size, height=Htab, r=Rext, gap=Dfpath/2, slot=false) {
             prism(vslot, r=gap);
             // taper the space above the slot to ease bridging
             prism([EPSILON, vslot.y, vslot.z+2*Hflayer]);
-        } else {
-            raise(-Djoiner) hull() {
-                // round the tab corners
-                prism([d, w-2*height, h]);
-                rotate([0, 90, 0]) for (j=[-1,+1]) translate([0, o.y*j])
-                    prism(height=d, center=true)
-                        rotate(90) semistadium(h=Djoiner, r=height);
-            }
-        }
+        } else rotate([90, 0, 90]) prism(height=d, center=true)
+            tab([w, height], angle=90, rint=0, rext=height);
     }
 }
 module box(size=Vbox, height=undef, depth=undef, r=Rext,
