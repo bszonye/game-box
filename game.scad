@@ -49,7 +49,7 @@ Avee = 60;  // default angle for notches (TODO: replace with Atab)
 Atab = 60;  // default angle for tabs & notches
 Ahex = 60;  // default angle for hexagons & triangles
 Arack = 75;  // default angle for card & tile racks
-Adraw = 3;  // default slope for draw trays
+Adraw = 3;  // default slope for draw trays (TODO: are these obsolete?)
 Sup = [90, 0, 0];
 Sdown = [-90, 0, 0];
 echo(Avee=Avee, Ahex=Ahex, Atab=Atab, Arack=Arack, Adraw=Adraw);
@@ -856,7 +856,7 @@ module box(size=Vbox, height=undef, depth=undef, r=Rext,
     index = numeric_flag(index, default=depth/2);
     echo(tabs=tabs, slots=slots, hole=hole, notch=notch, index=index);
     // determine wall width
-    thick = thick || tabs || slots || notch || draw;
+    thick = thick || tabs || slots || notch;
     wall = wall_thickness(wall, thick);
     divider = wall_thickness(divider, thick, default=wall);
     echo(wall=wall, divider=divider);
@@ -874,12 +874,17 @@ module box(size=Vbox, height=undef, depth=undef, r=Rext,
         union() {
             prism(vbox, r=r);
             if (tabs) raise(vbox.z) stacking_tabs(vbox, height=tabs, r=r);
+            if (feet) {
+                o = [vcore.x/2-3/2*r, vbox.y/2+wall-r, vbox.z-3/2*r];
+                for (i=[-1,+1]) scale([i, 1]) translate(o) sphere(r);
+            }
         }
         // tab slots
         if (slots) stacking_tabs(vbox, height=slots, r=r, slot=true);
         // interior
         for (i=[1/2:grid.x]) for (j=[1/2:grid.y])
             translate([i*dx, j*dy] - area(vwell/2) - area(divider)/2) {
+                // TODO: scoop cells
                 raise(hfloor) prism(vcell, height=vcell.z+Dcut, r=r-wall);
                 if (hole) raise(-Dcut) cylinder(h=hfloor+2*Dcut, d=hole);
             }
@@ -895,10 +900,10 @@ module box(size=Vbox, height=undef, depth=undef, r=Rext,
             rotate(Sdown) punch(vbox.y) hex_notch([vcore.x, index]);
         // draw notch (for narrow deck boxes)
         if (draw) {
-            // TODO
-        }
-        if (feet) {
-            // TODO: side nubs to elevate draw boxes
+            translate([0, -vbox.y/2, vbox.z]) rotate(Sdown)
+                punch(wall) notch([vbox.x, depth], w1=vcore.x, angle=75);
+            translate([0, vbox.y/2, vbox.z]) scale([1, -1]) rotate(Sdown)
+                punch(wall) hex_notch([vcore.x, Dthumb]);
         }
     }
     // preview slot fit
