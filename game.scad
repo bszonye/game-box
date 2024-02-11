@@ -46,7 +46,7 @@ Rext = 3.0;  // external corner radius
 Rint = Rext - Dwall;  // internal corner radius
 echo(Rext=Rext, Rint=Rint);
 Avee = 60;  // default angle for notches (TODO: replace with Atab)
-Atab = 75;  // default angle for tabs & notches
+Atab = 60;  // default angle for tabs & notches
 Ahex = 60;  // default angle for hexagons & triangles
 Arack = 75;  // default angle for card & tile racks
 Adraw = 3;  // default slope for draw trays
@@ -161,6 +161,7 @@ function deck_box_volume(n=0, size=Vcard, height=Hcard, width=0, lip=Hlip) =
 function sum(v) = v ? [for(p=v) 1]*v : 0;
 function swapxy(v) = [v.y, v.x, if (2<len(v)) for (i=[2:len(v)-1]) v[i]];
 function unit_axis(n) = [for (i=[0:2]) i==n ? 1 : 0];
+function numeric_flag(x, default) = is_num(x) ? x : x ? default : 0;
 
 // transformations
 module colorize(c=undef, alpha=undef) {
@@ -827,19 +828,21 @@ module stacking_tabs(size, height=Htab, r=Rext, gap=Dfpath/2, slot=false) {
     d = 2*Dfpath;
     w = v.y - 2*r - 2*Dfpath;
     o = [v.x/2 - 3/2*d, w/2 - height];
-    for (i=[-1,+1]) translate([o.x*i, 0, -Djoiner]) {
-        if (slot) hull() {
+    for (i=[-1,+1]) translate([o.x*i, 0]) {
+        if (slot) raise(-Djoiner) hull() {
             // widen slot and slightly lengthen it
             vslot = [d+Dfpath, w+2*Dgap, h];
             prism(vslot, r=gap);
             // taper the space above the slot to ease bridging
             prism([EPSILON, vslot.y, vslot.z+2*Hflayer]);
-        } else hull() {
-            // round the tab corners
-            prism([d, w-2*height, h]);
-            rotate([0, 90, 0]) for (j=[-1,+1]) translate([0, o.y*j])
-                prism(height=d, center=true)
-                    rotate(90) semistadium(h=Djoiner, r=height);
+        } else {
+            raise(-Djoiner) hull() {
+                // round the tab corners
+                prism([d, w-2*height, h]);
+                rotate([0, 90, 0]) for (j=[-1,+1]) translate([0, o.y*j])
+                    prism(height=d, center=true)
+                        rotate(90) semistadium(h=Djoiner, r=height);
+            }
         }
     }
 }
@@ -847,16 +850,15 @@ module box(size=Vbox, height=undef, depth=undef, r=Rext,
            grid=1, wall=undef, divider=undef, tabs=false, slots=false,
            hole=false, notch=false, index=false, draw=false, feet=false,
            thick=false, color=undef) {
-    function numeric_flag(x, default) = is_num(x) ? x : x ? default : 0;
     // box dimensions
     vbox = volume(size, height);
     depth = is_undef(depth) ? vbox.z - Hfloor : depth;
     hfloor = vbox.z - depth;
     // convert numeric flags to defaults
     tabs = numeric_flag(tabs, default=Htab);
-    slots = numeric_flag(slots, default=tabs);
+    slots = numeric_flag(slots, default=Htab);
     hole = numeric_flag(hole, default=Dthumb);
-    notch = numeric_flag(notch, default=Dthumb);  // +2*r/tan(90-Ahex/2));
+    notch = numeric_flag(notch, default=Dthumb);
     index = numeric_flag(index, default=depth/2);
     echo(tabs=tabs, slots=slots, hole=hole, notch=notch, index=index);
     // determine wall width
@@ -865,13 +867,13 @@ module box(size=Vbox, height=undef, depth=undef, r=Rext,
     divider = wall_thickness(divider, thick, default=wall);
     echo(wall=wall, divider=divider);
     // internal dimensions & grid divisions
-    vcore = volume(area(vbox) - area(2*r), depth);
-    vwell = volume(area(vbox) - area(2*wall), depth);
+    vwell = area(vbox) - area(2*wall);  // area inside walls
+    vcore = area(vbox) - area(4*r);  // safe cutting area
     grid = area(grid);
     dx = (vwell.x + divider) / grid.x;
     dy = (vwell.y + divider) / grid.y;
     vcell = vround([dx - divider, dy - divider, depth]);
-    echo(vbox=vbox, vwell=vwell, vcell=vcell);
+    echo(vbox=vbox, vcore=vcore, vwell=vwell, vcell=vcell);
     // draw box
     colorize(color) difference() {
         // exterior
@@ -889,12 +891,12 @@ module box(size=Vbox, height=undef, depth=undef, r=Rext,
             }
         // side notch (for card trays)
         if (notch) translate([0, -vbox.y/2]) {
-            punch(vbox.z) hex_notch([vcore.x, vcore.y/2], rhex=notch/2);
+            punch(vbox.z) hex_notch([vcore.x, notch/2]);
             raise(vbox.z) rotate(Sdown) punch(wall)
-                notch([vcore.x, depth], w2=notch);
+                notch([vcore.x, depth], w2=notch/sin(Ahex));
                 // hex_notch([vcore.x, depth]);
         }
-        // index notch (for long deck boxes)
+        // top notch (for long deck boxes)
         if (index) translate([0, -vbox.y/2, vbox.z])
             rotate(Sdown) punch(vbox.y) hex_notch([vcore.x, index]);
         // draw notch (for narrow deck boxes)
@@ -907,6 +909,34 @@ module box(size=Vbox, height=undef, depth=undef, r=Rext,
     }
     // preview slot fit
     %if (slots) stacking_tabs(vbox, height=slots, r=r);
+    // children
+    if ($children) raise(hfloor+EPSILON) children(0);
+    if (1<$children) raise(vbox.z+EPSILON) children([1:$children-1]);
+}
+module box_divider(size=Vbox, height=Hcard_divider, r=Rext, wall=undef, gap=Dgap,
+                   hole=false, notch=false, draw=false, thick=true, color=undef) {
+    vbox = area(size);
+    vcore = vbox - area(2*r);
+    // convert numeric flags to defaults
+    hole = numeric_flag(hole, default=Dthumb);
+    notch = numeric_flag(notch, default=Dthumb);
+    echo(hole=hole, notch=notch);
+    // dimensions
+    thick = thick || notch;
+    wall = wall_thickness(wall, thick);
+    echo(wall=wall);
+    v = area(area(vbox) - area(2*wall + 2*gap));
+    echo(vbox=vbox, thick=thick, wall=wall, v=v);
+    // draw box
+    colorize(color) prism(height=height, r=r) difference() {
+        // exterior
+        square(v, center=true);
+        if (hole) circle(d=hole);
+        if (notch) for (i=[-1,+1]) scale([1, i])
+            translate([0, -vbox.y/2]) hex_notch([vcore.x, notch/2], r=0);
+    }
+    // children
+    raise(height+EPSILON) children();
 }
 module box_lid(size=Vbox, height=Hfloor, r=Rext, slots=Htab, color=undef) {
     vbox = volume(size, height);
