@@ -840,35 +840,37 @@ module stacking_tabs(size, height=Htab, r=Rext, gap=Dfpath/2, slot=false) {
             tab([w, height], angle=90, rint=0, rext=height);
     }
 }
-module box(size=Vbox, height=undef, depth=undef, r=Rext,
+module box(size=Vbox, height=undef, well=undef, depth=undef, r=Rext,
            grid=1, wall=undef, divider=undef, tabs=false, slots=false,
            hole=false, notch=false, index=false, draw=false, feet=false,
            thick=false, color=undef) {
     // box dimensions
     vbox = volume(size, height);
-    depth = is_undef(depth) ? vbox.z - Hfloor : depth;
-    hfloor = vbox.z - depth;
+    thick = thick || tabs || slots || notch;
+    wall = is_undef(wall) ? wall_thickness(wall, thick) : wall;
+    vwell = volume(is_undef(well) ? area(vbox) - area(2*wall) : well,
+                  is_undef(depth) ? vbox.z - Hfloor : depth);
+    dwall = max(vbox.x - vwell.x, vbox.y - vwell.y);
+    ddiv = wall_thickness(divider, thick, default=wall);
+    depth = vwell.z;
+    hfloor = vbox.z - vwell.z;
+    vcore = area(vbox) - area(4*r);  // safe cutting area
     // convert numeric flags to defaults
-    tabs = numeric_flag(tabs, default=Htab);
-    slots = numeric_flag(slots, default=Htab);
+    tabs = numeric_flag(tabs, default=Htab);  // TODO: use length, not height
+    slots = numeric_flag(slots, default=Htab);  // TODO: use length, not height
     hole = numeric_flag(hole, default=Dthumb);
     notch = numeric_flag(notch, default=Dthumb);
     index = numeric_flag(index, default=depth/2);
+    draw = numeric_flag(draw, default=Dthumb);
     echo(tabs=tabs, slots=slots, hole=hole, notch=notch, index=index);
-    // determine wall width
-    thick = thick || tabs || slots || notch;
-    wall = wall_thickness(wall, thick);
-    divider = wall_thickness(divider, thick, default=wall);
-    echo(wall=wall, divider=divider);
-    // internal dimensions & grid divisions
-    vwell = area(vbox) - area(2*wall);  // area inside walls
-    vcore = area(vbox) - area(4*r);  // safe cutting area
+    // grid divisions
     grid = area(grid);
-    dx = (vwell.x + divider) / grid.x;
-    dy = (vwell.y + divider) / grid.y;
-    vcell = vround([dx - divider, dy - divider, depth]);
-    echo(vbox=vbox, vcore=vcore, vwell=vwell, vcell=vcell);
-    // draw box
+    dx = (vwell.x + ddiv) / grid.x;
+    dy = (vwell.y + ddiv) / grid.y;
+    vcell = vround([dx - ddiv, dy - ddiv, depth]);
+    echo(vbox=vbox, vwell=vwell, vcore=vcore, vcell=vcell,
+         dwall=dwall, ddiv=ddiv, depth=depth, hfloor=hfloor);
+    // build the box
     colorize(color) difference() {
         // exterior
         union() {
@@ -883,7 +885,7 @@ module box(size=Vbox, height=undef, depth=undef, r=Rext,
         if (slots) stacking_tabs(vbox, height=slots, r=r, slot=true);
         // interior
         for (i=[1/2:grid.x]) for (j=[1/2:grid.y])
-            translate([i*dx, j*dy] - area(vwell/2) - area(divider)/2) {
+            translate([i*dx, j*dy] - area(vwell/2) - area(ddiv)/2) {
                 // TODO: scoop cells
                 raise(hfloor) prism(vcell, height=vcell.z+Dcut, r=r-wall);
                 if (hole) raise(-Dcut) cylinder(h=hfloor+2*Dcut, d=hole);
@@ -903,7 +905,7 @@ module box(size=Vbox, height=undef, depth=undef, r=Rext,
             translate([0, -vbox.y/2, vbox.z]) rotate(Sdown)
                 punch(wall) notch([vbox.x, depth], w1=vcore.x, angle=75);
             translate([0, vbox.y/2, vbox.z]) scale([1, -1]) rotate(Sdown)
-                punch(wall) hex_notch([vcore.x, Dthumb]);
+                punch(wall) hex_notch([vcore.x, draw]);
         }
     }
     // preview slot fit
