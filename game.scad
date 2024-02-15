@@ -869,10 +869,28 @@ module stacking_tabs(size, height=Htab, r=Rext, gap=Dfpath/2, slot=false) {
             tab([w, height], angle=90, rint=0, rext=height);
     }
 }
+module scoop(size, height=undef, rint=Rint, rscoop=2*Rext, cut=Dcut) {
+    v = volume(size, height);
+    rmax = min(v.x/4, v.y/4, v.z);  // limit radiuses to safe values
+    rn0 = min(rint, rmax);
+    rn1 = min(rscoop, rmax);
+    hull() {
+        raise(v.z) prism(v, height=cut, r=rn0);
+        for (angle=[0:$fa:90]) {
+            cz = 1-cos(angle);
+            cx = 1-sin(angle);
+            htier = rscoop * cz;
+            vtier = v - 2 * cx * area(rn1);
+            rmax = min(vtier)/2 - EPSILON;
+            rtier = min(rmax, cx * (rn1 - rn0) + rn0);
+            raise(htier) prism(vtier, height=v.z-htier+EPSILON, r=rtier);
+        }
+    }
+}
 module box(size=Vbox, height=undef, well=undef, depth=undef, r=Rext,
            grid=1, wall=undef, divider=undef, tabs=false, slots=false,
-           hole=false, notch=false, index=false, draw=false, feet=false,
-           thick=false, color=undef) {
+           scoop=false, hole=false, notch=false, index=false,
+           draw=false, feet=false, thick=false, color=undef) {
     // box dimensions
     vbox = volume(size, height);
     thick = thick || tabs || slots || notch;
@@ -887,6 +905,7 @@ module box(size=Vbox, height=undef, well=undef, depth=undef, r=Rext,
     // convert numeric flags to defaults
     tabs = numeric_flag(tabs, default=vbox.y);
     slots = numeric_flag(slots, default=vbox.y);
+    scoop = numeric_flag(scoop, default=3/2*r);
     hole = numeric_flag(hole, default=Dthumb);
     notch = numeric_flag(notch, default=Dthumb);
     index = numeric_flag(index, default=depth/2);
@@ -923,8 +942,11 @@ module box(size=Vbox, height=undef, well=undef, depth=undef, r=Rext,
         // interior
         for (i=[1/2:grid.x]) for (j=[1/2:grid.y])
             translate([i*dx, j*dy] - area(vwell/2) - area(ddiv)/2) {
-                // TODO: scoop cells
-                raise(hfloor) prism(vcell, height=vcell.z+Dcut, r=r-dwall);
+                raise(hfloor) {
+                    rint = r - dwall;
+                    if (scoop) scoop(vcell, rint=rint, rscoop=scoop, cut=Dcut);
+                    else prism(vcell, height=vcell.z+Dcut, r=rint);
+                }
                 if (hole) raise(-Dcut) cylinder(h=hfloor+2*Dcut, d=hole);
             }
         // side notch (for card trays)
