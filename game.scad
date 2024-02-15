@@ -879,14 +879,14 @@ module box(size=Vbox, height=undef, well=undef, depth=undef, r=Rext,
     wall = is_undef(wall) ? wall_thickness(wall, thick) : wall;
     vwell = volume(is_undef(well) ? area(vbox) - area(2*wall) : well,
                   is_undef(depth) ? vbox.z - Hfloor : depth);
-    dwall = max(vbox.x - vwell.x, vbox.y - vwell.y);
+    dwall = max(vbox.x - vwell.x, vbox.y - vwell.y) / 2;
     ddiv = wall_thickness(divider, thick, default=wall);
     depth = vwell.z;
     hfloor = vbox.z - vwell.z;
     vcore = area(vbox) - area(4*r);  // safe cutting area
     // convert numeric flags to defaults
-    tabs = numeric_flag(tabs, default=Htab);  // TODO: use length, not height
-    slots = numeric_flag(slots, default=Htab);  // TODO: use length, not height
+    tabs = numeric_flag(tabs, default=vbox.y);
+    slots = numeric_flag(slots, default=vbox.y);
     hole = numeric_flag(hole, default=Dthumb);
     notch = numeric_flag(notch, default=Dthumb);
     index = numeric_flag(index, default=depth/2);
@@ -898,31 +898,39 @@ module box(size=Vbox, height=undef, well=undef, depth=undef, r=Rext,
     dy = (vwell.y + ddiv) / grid.y;
     vcell = vround([dx - ddiv, dy - ddiv, depth]);
     echo(vbox=vbox, vwell=vwell, vcore=vcore, vcell=vcell,
-         dwall=dwall, ddiv=ddiv, depth=depth, hfloor=hfloor);
+         dwall=dwall, ddiv=ddiv, depth=depth, hfloor=hfloor, r=r);
     // build the box
     colorize(color) difference() {
         // exterior
         union() {
             prism(vbox, r=r);
-            if (tabs) raise(vbox.z) stacking_tabs(vbox, height=tabs, r=r);
+            if (tabs) {
+                o = [0, tabs < 0 ? vbox.y/2 + tabs/2 : 0, vbox.z];
+                vt = [vbox.x, abs(tabs), vbox.z];
+                translate(o) stacking_tabs(vt, r=r);
+            }
             if (feet) {
-                o = [vcore.x/2-3/2*r, vbox.y/2+wall-r, vbox.z-3/2*r];
+                o = [vcore.x/2-3/2*r, vbox.y/2+dwall-r, vbox.z-3/2*r];
                 for (i=[-1,+1]) scale([i, 1]) translate(o) sphere(r);
             }
         }
         // tab slots
-        if (slots) stacking_tabs(vbox, height=slots, r=r, slot=true);
+        if (slots) {
+            o = [0, slots < 0 ? vbox.y/2 + slots/2 : 0];
+            vt = [vbox.x, abs(slots), vbox.z];
+            translate(o) stacking_tabs(vt, r=r, slot=true);
+        }
         // interior
         for (i=[1/2:grid.x]) for (j=[1/2:grid.y])
             translate([i*dx, j*dy] - area(vwell/2) - area(ddiv)/2) {
                 // TODO: scoop cells
-                raise(hfloor) prism(vcell, height=vcell.z+Dcut, r=r-wall);
+                raise(hfloor) prism(vcell, height=vcell.z+Dcut, r=r-dwall);
                 if (hole) raise(-Dcut) cylinder(h=hfloor+2*Dcut, d=hole);
             }
         // side notch (for card trays)
         if (notch) translate([0, -vbox.y/2]) {
             punch(vbox.z) hex_notch([vcore.x, notch/2]);
-            raise(vbox.z) rotate(Sdown) punch(wall)
+            raise(vbox.z) rotate(Sdown) punch(dwall)
                 notch([vcore.x, depth], w2=notch/sin(Ahex));
                 // hex_notch([vcore.x, depth]);
         }
@@ -932,13 +940,11 @@ module box(size=Vbox, height=undef, well=undef, depth=undef, r=Rext,
         // draw notch (for narrow deck boxes)
         if (draw) {
             translate([0, -vbox.y/2, vbox.z]) rotate(Sdown)
-                punch(wall) notch([vbox.x, depth], w1=vcore.x, angle=75);
+                punch(dwall) notch([vbox.x, depth], w1=vcore.x, angle=75);
             translate([0, vbox.y/2, vbox.z]) scale([1, -1]) rotate(Sdown)
-                punch(wall) hex_notch([vcore.x, draw]);
+                punch(dwall) hex_notch([vcore.x, draw]);
         }
     }
-    // preview slot fit
-    %if (slots) stacking_tabs(vbox, height=slots, r=r);
     // children
     if ($children) raise(hfloor+EPSILON) children(0);
     if (1<$children) raise(vbox.z+EPSILON) children([1:$children-1]);
