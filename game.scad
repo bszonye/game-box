@@ -796,7 +796,33 @@ module hex_tab(size=undef, rhex=undef, angle=Ahex, r=Rext, joiner=Djoiner) {
     tab([v.x, d], w1=w1, w2=w2, angle=a, rint=r, rext=r, joiner=joiner);
 }
 module round_tab(size=undef, d=Dthumb, r=Rext, joiner=Djoiner) {
-    // TODO
+    // approximate width of opening at the tangents
+    // (quantization of $fa causes a small difference from ideal)
+    axis = d/2 + r;
+    span = 2*axis*cos(asin(r/axis));
+    v = is_undef(size) ? area([span, d/2]) : area(size);
+    intersection() {
+        fillet(r, r) {
+            semistadium(h=0, r=d/2);
+            turnaround = [span+2*r, 2*r+EPSILON];
+            translate([0, -turnaround.y/2]) square(turnaround, center=true);
+        }
+        translate([0, v.y/2]) square([v.x, v.y+2*joiner], center=true);
+    }
+}
+module circle_tab(size=undef, d=Dthumb, r=Rint, joiner=Djoiner) {
+    axis = d/2 + r;
+    rise = d/2 - r;
+    span = 2 * sqrt(axis^2 - rise^2);
+    v = is_undef(size) ? area([max(d, span), d]) : area(size);
+    intersection() {
+        fillet(r, r) {
+            translate([0, d/2]) circle(d=d);
+            turnaround = [span+2*r, 2*r+EPSILON];
+            translate([0, -turnaround.y/2]) square(turnaround, center=true);
+        }
+        translate([0, v.y/2]) square([v.x, v.y+2*joiner], center=true);
+    }
 }
 module notch(size, w1=undef, w2=undef, angle=Atab, rint=Rint, rext=Rext, cut=Dcut) {
     // create a notch shape inside a given area
@@ -814,6 +840,9 @@ module hex_notch(size=undef, rhex=undef, angle=Ahex, r=Rext, cut=Dcut) {
 }
 module round_notch(size=undef, d=Dthumb, r=Rext, cut=Dcut) {
     round_tab(size=size, d=d, r=r, joiner=cut);
+}
+module circle_notch(size=undef, d=Dthumb, r=Rint, cut=Dcut) {
+    circle_tab(size=size, d=d, r=r, joiner=cut);
 }
 module punch(d, cut=Dcut, center=false) {
     raise(-cut) prism(height=d+2*cut, center=center) children();
