@@ -41,6 +41,7 @@ Vsleeve_green = [59, 91];  // Standard American
 Vsleeve_yellow = [44, 67];  // Mini American
 Vsleeve_catan = [56, 82];  // Catan (English)
 // Sleeve Kings
+Vsleeve_card_game = [66.5, 91];
 Vsleeve_euro = [61.5, 94];  // Standard European
 Vsleeve_mini_euro = [47, 70];  // Mini European
 Vsleeve_super_large = [104, 129];
