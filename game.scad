@@ -942,7 +942,7 @@ module box(size=Vbox, height=undef, well=undef, depth=undef, r=Rext,
         // interior
         for (i=[1/2:grid.x]) for (j=[1/2:grid.y])
             translate([i*dx, j*dy] - area(vwell/2) - area(ddiv)/2) {
-                raise(hfloor) {
+                if (depth) raise(hfloor) {
                     rint = r - dwall;
                     if (scoop) scoop(vcell, rint=rint, rscoop=scoop, cut=Dcut);
                     else prism(vcell, height=vcell.z+Dcut, r=rint);
