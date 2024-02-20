@@ -26,12 +26,14 @@ EPSILON = 0.01;
 MICRON = 0.001;
 PHI = (1+sqrt(5))/2;
 
-// filament metrics
+// printer & filament metrics
+Vprinter = [180, 180, 180];
 Hflayer = 0.25;
 Dfwidth = 0.70;  // extrusion width
 Dfoverlap = Hflayer * (1 - PI/4);  // overlap between paths
 Dfpath = tfloor(Dfwidth - Dfoverlap);  // width multiplier for walls
-echo(Hflayer=Hflayer, Dfwidth=Dfwidth, Dfoverlap=mround(Dfoverlap), Dfpath=Dfpath);
+echo(Vprinter=Vprinter, Hflayer=Hflayer, Dfwidth=Dfwidth,
+     Dfoverlap=mround(Dfoverlap), Dfpath=Dfpath);
 
 // organizer metrics
 Dwall = 2.0;
@@ -1033,7 +1035,24 @@ module layout_tool(size, height=Hfloor, r=Rext,
     }
 }
 
+module test_pattern() {
+    v = area(Vprinter) - area(5);
+    dx = v.x/2 - INCH/2;
+    dy = v.y/2 - INCH/2;
+    w = 4*Dfpath;
+    prism(height=Hflayer) {
+        for (i=[-1:1:+1]) for (j=[-1:1:+1]) translate([i*dx, j*dy]) {
+            if (abs(i) == 1 && abs(j) == 1) square(INCH, center=true);
+            else circle(d=INCH);
+            if (i == 0) square([v.x, w], center=true);
+            if (j == 0) square([w, v.x], center=true);
+        }
+    }
+    translate([0, -dy/2]) cylinder(h=Hfloor, d=INCH);
+}
+
 module test_game_shapes() {
+    // TODO: update
     %box_frame();
     module grid(i=0, j=0) {
         translate([100*i, 100*j]) children();
