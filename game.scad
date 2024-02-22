@@ -40,7 +40,7 @@ Dwall = 2.0;
 Hfloor = Dwall;
 Dthick = 3.0;  // for heavier, stiffer walls
 Dthin = 1.0;  // for thin divider walls
-Dgap = 0.1;
+Dgap = Dfpath/4;
 Dcut = eround(Dwall/3);  // cutting margin for negative spaces
 Djoiner = EPSILON;  // overlap margin for joining parts
 echo(Dwall=Dwall, Hfloor=Hfloor, Dgap=Dgap, Dcut=Dcut, Djoiner=Djoiner);
@@ -74,9 +74,9 @@ Htile = Hboard;  // tiles: hexes, maps, plaques
 Htoken = Hboard;  // tokens: coins, points, units
 // hex tiles
 Rhex = Dthumb;  // hex major radius = side length = grid spacing
-Rhex_group = Rhex;  // size of gridded hexes (may overflow spacing)
+Rhex_grid = Rhex;  // size of gridded hexes (may overflow spacing)
 Rhex_single = Rhex;  // size of ungridded hex tiles
-echo(Rhex=Rhex, Rhex_group=Rhex_group, Rhex_single=Rhex_single);
+echo(Rhex=Rhex, Rhex_grid=Rhex_grid, Rhex_single=Rhex_single);
 // chips & counters
 Dchip = 40.0;
 Rchip = Dchip / 2;
@@ -92,8 +92,9 @@ echo(Hmanual=Hmanual, Hceiling=Hceiling, Hmain=Hmain);
 
 // container metrics
 Rfoot = Rint - Dgap;  // concentric with Rint & Rext with nesting gap
-Hfoot = 1.0;
-Hlip = Rint + Hfoot;  // wall height above contents, scoops, etc.
+Hfoot = 1.0;  // TODO: replace with Hbase or Hstack?
+Hhead = 1.0;  // headroom above contents
+Hlip = Hhead + Hfoot;  // wall height above contents, scoops, etc.
 Htab = 1 - Hflayer;
 Htray = 13.0;
 Vtray = [72, 100, Htray];
@@ -647,8 +648,8 @@ module scoop_tray(size=Vtray, height=undef, grid=1, rscoop=2*Rext, lip=Hlip,
     }
 }
 
-module hex(points=[[0, 0]], r=undef, grid=Rhex, merge=Djoiner) {
-    rhex = is_undef(r) ? len(points) == 1 ? Rhex_single : Rhex_group : r;
+module hex(points=[[0, 0]], r=undef, grid=Rhex_grid, merge=Djoiner) {
+    rhex = is_undef(r) ? len(points) == 1 ? Rhex_single : grid : r;
     x1 = sin(Ahex) * rhex;
     y1 = rhex / 2;
     phex = [[0, rhex], [-x1, y1], [-x1, -y1], [0, -rhex], [x1, -y1], [x1, y1]];
@@ -675,6 +676,21 @@ module hex_tray(points=[[0, 0]], n=0, height=Htile, r=undef, grid=Rhex,
         if (hole)
             raise(-Dcut) prism(height=Hfloor+2*Dcut, r=Rext)
             hex(points, r=hole/2, grid=grid);
+    }
+}
+module hex_box(points=[[0, 0]], n=0, height=Htile, rhex=undef, grid=Rhex_grid,
+               depth=undef, r=Rext, wall=undef, hole=undef, thick=false,
+               stack=false, rim=Drim, base=undef, lip=undef, color=undef) {
+    rhex = is_undef(rhex) ? len(points) == 1 ? Rhex_single : grid : rhex;
+    hole = numeric_flag(hole, Dthumb);
+    stack = numeric_flag(stack, Hstack);
+    h = n ? lceil(n * height) + Hfloor + Hhead + stack : height;
+    wall = is_undef(wall) ? wall_thickness(wall, thick) : wall;
+    difference() {
+        stacker(height=h, depth=depth, r=r, wall=wall, stack=stack, rim=rim,
+                base=base, lip=lip)
+            offset(delta=r) hex(points, r=rhex, grid=grid);
+        if (hole) punch(Hfloor) fillet(rext=r-wall) hex(points, hole/2, grid);
     }
 }
 
@@ -893,35 +909,48 @@ module scoop(size, height=undef, rint=Rint, rscoop=2*Rext, cut=Dcut) {
         }
     }
 }
-module stacker(size=undef, height=undef, r=Rext, stack=Hstack, rim=Drim, gap=Dgap,
-               base=undef, lip=undef) {
+module stacker(size=undef, height=undef, depth=undef, r=Rext, wall=undef,
+               stack=Hstack, rim=Drim, base=undef, lip=undef, gap=Dgap,
+               thick=false, convex=undef) {
     v = is_undef(size) ? undef : volume(size, height);
     h = is_undef(height) ? v.z : height;
+    depth = is_undef(depth) ? h - Hfloor : depth;
+    wall = is_undef(wall) ? wall_thickness(wall, thick) : wall;
+    rim = is_undef(rim) ? Drim : rim;
     base = stack && (is_undef(base) ? true : base);
     lip = stack && (is_undef(lip) ? true : lip);
-    rlip = r - rim;
-    rbase = rlip - gap;
+    convex = is_undef(convex) ? !!v : convex;  // is the 2D shape convex?
     hfloor = Hfloor;
-    echo(v=v, base=base, lip=lip, rlip=rlip, rbase=rbase);
+    echo(v=v, h=h, stack=stack, rim=rim, base=base, lip=lip);
+    module inset(in) {
+        offset(r=r-in) offset(delta=in-r)
+        offset(r=-r-in) offset(delta=r)
+        children();
+    }
     module stack() difference() {
         if (base) {
-            hull() {
-                raise(hfloor) prism(height=h-hfloor, r=r) children();
-                raise(stack) prism(height=hfloor-stack+Djoiner, r=rbase)
-                    offset(r=-rim-gap) children();
+            raise(hfloor) prism(height=h-hfloor, r=r) children();
+            raise(stack) if (convex) hull() {
+                prism(height=Djoiner) inset(rim+gap) children();
+                raise(hfloor-stack) prism(height=Djoiner, r=r) children();
+            } else minkowski() {
+                prism(height=Djoiner) inset(rim+gap) children();
+                cylinder(h=hfloor-stack, r1=0, r2=rim+gap);
             }
-            prism(height=stack+Djoiner, r=rbase) offset(r=-rim-gap) children();
+            prism(height=stack+Djoiner) inset(rim+gap) children();
         } else prism(height=h, r=r) children();
-        if (lip) raise(v.z - stack)
-            prism(height=stack+Dcut, r=rlip) offset(r=-rim) children();
+        if (lip) raise(h - stack)
+            prism(height=stack+Dcut) inset(rim) children();
+        if (depth) raise(h - depth)
+            prism(height=depth+Dcut) inset(wall) children();
     }
     stack() if (v) square(area(v), center=true); else children();
 }
-module box(size=Vbox, height=undef, well=undef, depth=undef, r=Rext,
-           grid=1, wall=undef, divider=undef, tabs=false, slots=false,
-           scoop=false, hole=false, notch=false, thumb=false, draw=false,
-           feet=false, thick=undef, stack=false, rim=Drim, gap=Dgap,
-           base=undef, lip=undef, color=undef) {
+module box(size=Vbox, height=undef, well=undef, depth=undef, r=Rext, grid=1,
+           wall=undef, divider=undef, tabs=false, slots=false, scoop=false,
+           hole=false, notch=false, thumb=false, draw=false, feet=false,
+           thick=undef, stack=undef, rim=undef, base=undef, lip=undef,
+           color=undef) {
     // box dimensions
     vbox = volume(size, height);
     thick = is_undef(thick) ? tabs || slots || thumb : thick;
@@ -954,7 +983,7 @@ module box(size=Vbox, height=undef, well=undef, depth=undef, r=Rext,
     colorize(color) difference() {
         // exterior
         union() {
-            stacker(vbox, r=r, stack=stack, rim=rim, gap=gap, base=base, lip=lip);
+            stacker(vbox, depth=0, r=r, stack=stack, rim=rim, base=base, lip=lip);
             if (tabs) {
                 o = [0, tabs < 0 ? vbox.y/2 + tabs/2 : 0, vbox.z];
                 vt = [vbox.x, abs(tabs), vbox.z];
@@ -1087,21 +1116,23 @@ module test_game_shapes() {
     module grid(i=0, j=0) {
         translate([100*i, 120*j]) children();
     }
-    *grid(-1) scoop_tray();
-    *grid(-2) grid_divider();
-    *grid(-3) deck_divider();
-    *grid(-4) tray_divider();
-    *grid(-5) creasing_tool();
-    *grid(+2) card_tray() %tray_divider();
-    *grid(+3) card_tray(cards=floor((Htray-Hfloor-Hlip)/Hcard));
-    *grid(+4) draw_tray();
-    *grid(+5) deck_box();
-    grid(+0, +0) box(25, 5, stack=true, $fa=Qprint);
-    *grid(+0, +1) box(stack=true, lip=false);
-    *grid(+0, +2) box(stack=true, base=false);
-    *grid(+0, -1.25) layout_tool([72, 20]);
-    *grid(+1, +1) box([Vtray.y, 4*Vtray.z, Vtray.x], notch=true);
-    *grid(+1, +0) box(volume(Vtray, wide=true), hole=true, thumb=true);
-    *grid(+1, -1) box([Vtray.y, Vtray.z, Vtray.x], draw=true, feet=true);
+    grid(-1) scoop_tray();
+    grid(-2) grid_divider();
+    grid(-3) deck_divider();
+    grid(-4) tray_divider();
+    grid(-5) creasing_tool();
+    grid(+2) card_tray() %tray_divider();
+    grid(+3) card_tray(cards=floor((Htray-Hfloor-Hlip)/Hcard));
+    grid(+4) draw_tray();
+    grid(+5) deck_box();
+    grid(+0, -1) box(25, 5, grid=2, stack=true);
+    grid(+0, -1/2) stacker(25, 5);
+    hex3 = [[-1/2, 1], [-1/2, 0], [1/2, 0]];
+    rhex = Dthumb/2;
+    grid(+0, +0) hex_box(hex3, height=5, rhex=rhex, grid=rhex, hole=rhex, stack=true);
+    grid(+0, +1) layout_tool([72, 20]);
+    grid(+1, +1) box([Vtray.y, 4*Vtray.z, Vtray.x], notch=true);
+    grid(+1, +0) box(volume(Vtray, wide=true), hole=true, thumb=true);
+    grid(+1, -1) box([Vtray.y, Vtray.z, Vtray.x], draw=true, feet=true);
 }
 
