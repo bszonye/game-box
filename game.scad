@@ -47,6 +47,9 @@ echo(Dwall=Dwall, Hfloor=Hfloor, Dgap=Dgap, Dcut=Dcut, Djoiner=Djoiner);
 Rext = 3.0;  // external corner radius
 Rint = Rext - Dwall;  // internal corner radius
 echo(Rext=Rext, Rint=Rint);
+Hstack = 1.0;  // stacker joint height
+Drim = 1.2;  // stacker rim thickness
+echo(Hstack=Hstack, Drim=Drim);
 Avee = 60;  // default angle for notches (TODO: replace with Atab)
 Atab = 60;  // default angle for tabs & notches
 Ahex = 60;  // default angle for hexagons & triangles
@@ -90,11 +93,11 @@ echo(Hmanual=Hmanual, Hceiling=Hceiling, Hmain=Hmain);
 // container metrics
 Rfoot = Rint - Dgap;  // concentric with Rint & Rext with nesting gap
 Hfoot = 1.0;
+Hlip = Rint + Hfoot;  // wall height above contents, scoops, etc.
 Htab = 1 - Hflayer;
 Htray = 13.0;
 Vtray = [72, 100, Htray];
 Vfoot = volume(Vtray/8, Hfoot);
-Hlip = Rint + Hfoot;  // wall height above contents, scoops, etc.
 echo(Vtray=Vtray, Htray=Htray, Hlip=Hlip);
 echo(Vfoot=Vfoot, Hfoot=Hfoot, Rfoot=Rfoot);
 Vbox = Vtray;  // TODO
@@ -890,10 +893,35 @@ module scoop(size, height=undef, rint=Rint, rscoop=2*Rext, cut=Dcut) {
         }
     }
 }
+module stacker(size=undef, height=undef, r=Rext, stack=Hstack, rim=Drim, gap=Dgap,
+               base=undef, lip=undef) {
+    v = is_undef(size) ? undef : volume(size, height);
+    h = is_undef(height) ? v.z : height;
+    base = stack && (is_undef(base) ? true : base);
+    lip = stack && (is_undef(lip) ? true : lip);
+    rlip = r - rim;
+    rbase = rlip - gap;
+    hfloor = Hfloor;
+    echo(v=v, base=base, lip=lip, rlip=rlip, rbase=rbase);
+    module stack() difference() {
+        if (base) {
+            hull() {
+                raise(hfloor) prism(height=h-hfloor, r=r) children();
+                raise(stack) prism(height=hfloor-stack+Djoiner, r=rbase)
+                    offset(r=-rim-gap) children();
+            }
+            prism(height=stack+Djoiner, r=rbase) offset(r=-rim-gap) children();
+        } else prism(height=h, r=r) children();
+        if (lip) raise(v.z - stack)
+            prism(height=stack+Dcut, r=rlip) offset(r=-rim) children();
+    }
+    stack() if (v) square(area(v), center=true); else children();
+}
 module box(size=Vbox, height=undef, well=undef, depth=undef, r=Rext,
            grid=1, wall=undef, divider=undef, tabs=false, slots=false,
            scoop=false, hole=false, notch=false, thumb=false, draw=false,
-           feet=false, thick=undef, color=undef) {
+           feet=false, thick=undef, stack=false, rim=Drim, gap=Dgap,
+           base=undef, lip=undef, color=undef) {
     // box dimensions
     vbox = volume(size, height);
     thick = is_undef(thick) ? tabs || slots || thumb : thick;
@@ -913,7 +941,8 @@ module box(size=Vbox, height=undef, well=undef, depth=undef, r=Rext,
     notch = numeric_flag(notch, Dthumb);
     draw = numeric_flag(draw, notch ? notch : Dthumb);
     thumb = numeric_flag(thumb, notch ? notch : Dthumb);
-    echo(tabs=tabs, slots=slots, scoop=scoop, hole=hole, notch=notch);
+    stack = numeric_flag(stack, Hstack);
+    echo(tabs=tabs, slots=slots, scoop=scoop, hole=hole, notch=notch, stack=stack);
     // grid divisions
     grid = area(grid);
     dx = (vwell.x + ddiv) / grid.x;
@@ -925,7 +954,7 @@ module box(size=Vbox, height=undef, well=undef, depth=undef, r=Rext,
     colorize(color) difference() {
         // exterior
         union() {
-            prism(vbox, r=r);
+            stacker(vbox, r=r, stack=stack, rim=rim, gap=gap, base=base, lip=lip);
             if (tabs) {
                 o = [0, tabs < 0 ? vbox.y/2 + tabs/2 : 0, vbox.z];
                 vt = [vbox.x, abs(tabs), vbox.z];
@@ -1056,20 +1085,23 @@ module test_game_shapes() {
     // TODO: update
     %box_frame();
     module grid(i=0, j=0) {
-        translate([100*i, 100*j]) children();
+        translate([100*i, 120*j]) children();
     }
-    grid(-1) scoop_tray();
-    grid(-2) grid_divider();
-    grid(-3) deck_divider();
-    grid(-4) tray_divider();
-    grid(-5) creasing_tool();
-    grid(+2) card_tray() %tray_divider();
-    grid(+3) card_tray(cards=floor((Htray-Hfloor-Hlip)/Hcard));
-    grid(+4) draw_tray();
-    grid(+5) deck_box();
-    grid(+0, -1.25) layout_tool([72, 20]);
-    grid(+1, +1) box([Vtray.y, 4*Vtray.z, Vtray.x], notch=true);
-    grid(+1, +0) box(volume(Vtray, wide=true), hole=true, thumb=true);
-    grid(+1, -1) box([Vtray.y, Vtray.z, Vtray.x], draw=true, feet=true);
+    *grid(-1) scoop_tray();
+    *grid(-2) grid_divider();
+    *grid(-3) deck_divider();
+    *grid(-4) tray_divider();
+    *grid(-5) creasing_tool();
+    *grid(+2) card_tray() %tray_divider();
+    *grid(+3) card_tray(cards=floor((Htray-Hfloor-Hlip)/Hcard));
+    *grid(+4) draw_tray();
+    *grid(+5) deck_box();
+    grid(+0, +0) box(25, 5, stack=true, $fa=Qprint);
+    *grid(+0, +1) box(stack=true, lip=false);
+    *grid(+0, +2) box(stack=true, base=false);
+    *grid(+0, -1.25) layout_tool([72, 20]);
+    *grid(+1, +1) box([Vtray.y, 4*Vtray.z, Vtray.x], notch=true);
+    *grid(+1, +0) box(volume(Vtray, wide=true), hole=true, thumb=true);
+    *grid(+1, -1) box([Vtray.y, Vtray.z, Vtray.x], draw=true, feet=true);
 }
 
