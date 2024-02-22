@@ -970,8 +970,7 @@ module box(size=Vbox, height=undef, well=undef, depth=undef, r=Rext,
         }
     }
     // children
-    if ($children) raise(hfloor+EPSILON) children(0);
-    if (1<$children) raise(vbox.z+EPSILON) children([1:$children-1]);
+    raise(vbox.z+EPSILON) children();
 }
 module box_divider(size=Vbox, height=Hcard_divider, r=Rext, wall=undef, gap=Dgap,
                    hole=false, notch=false, draw=false, thick=true, color=undef) {
