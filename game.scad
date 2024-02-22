@@ -847,7 +847,8 @@ module circle_notch(size=undef, d=Dthumb, r=Rint, cut=Dcut) {
     circle_tab(size=size, d=d, r=r, joiner=cut);
 }
 module punch(d, cut=Dcut, center=false) {
-    raise(-cut) prism(height=d+2*cut, center=center) children();
+    z = min(d, 0) - cut;  // allow negative cuts
+    raise(z) prism(height=abs(d)+2*cut, center=center) children();
 }
 
 function wall_thickness(wall=undef, thick=false, default=Dwall) =
@@ -891,11 +892,11 @@ module scoop(size, height=undef, rint=Rint, rscoop=2*Rext, cut=Dcut) {
 }
 module box(size=Vbox, height=undef, well=undef, depth=undef, r=Rext,
            grid=1, wall=undef, divider=undef, tabs=false, slots=false,
-           scoop=false, hole=false, notch=false, index=false,
-           draw=false, feet=false, thick=false, color=undef) {
+           scoop=false, hole=false, notch=false, thumb=false, draw=false,
+           feet=false, thick=undef, color=undef) {
     // box dimensions
     vbox = volume(size, height);
-    thick = thick || tabs || slots || notch;
+    thick = is_undef(thick) ? tabs || slots || thumb : thick;
     wall = is_undef(wall) ? wall_thickness(wall, thick) : wall;
     vwell = volume(is_undef(well) ? area(vbox) - area(2*wall) : well,
                   is_undef(depth) ? vbox.z - Hfloor : depth);
@@ -905,14 +906,14 @@ module box(size=Vbox, height=undef, well=undef, depth=undef, r=Rext,
     hfloor = vbox.z - vwell.z;
     vcore = area(vbox) - area(4*r);  // safe cutting area
     // convert numeric flags to defaults
-    tabs = numeric_flag(tabs, default=vbox.y);
-    slots = numeric_flag(slots, default=vbox.y);
-    scoop = numeric_flag(scoop, default=3/2*r);
-    hole = numeric_flag(hole, default=Dthumb);
-    notch = numeric_flag(notch, default=Dthumb);
-    index = numeric_flag(index, default=depth/2);
-    draw = numeric_flag(draw, default=Dthumb);
-    echo(tabs=tabs, slots=slots, hole=hole, notch=notch, index=index);
+    tabs = numeric_flag(tabs, vbox.y);
+    slots = numeric_flag(slots, vbox.y);
+    scoop = numeric_flag(scoop, 3/2*r);
+    hole = numeric_flag(hole, Dthumb);
+    notch = numeric_flag(notch, Dthumb);
+    draw = numeric_flag(draw, notch ? notch : Dthumb);
+    thumb = numeric_flag(thumb, notch ? notch : Dthumb);
+    echo(tabs=tabs, slots=slots, scoop=scoop, hole=hole, notch=notch);
     // grid divisions
     grid = area(grid);
     dx = (vwell.x + ddiv) / grid.x;
@@ -951,29 +952,30 @@ module box(size=Vbox, height=undef, well=undef, depth=undef, r=Rext,
                 }
                 if (hole) raise(-Dcut) cylinder(h=hfloor+2*Dcut, d=hole);
             }
-        // side notch (for card trays)
-        if (notch) translate([0, -vbox.y/2]) {
-            punch(vbox.z) hex_notch([vcore.x, notch/2]);
-            raise(vbox.z) rotate(Sdown) punch(dwall)
-                notch([vcore.x, depth], w2=notch/sin(Ahex));
-                // hex_notch([vcore.x, depth]);
-        }
-        // top notch (for long deck boxes)
-        if (index) translate([0, -vbox.y/2, vbox.z])
-            rotate(Sdown) punch(vbox.y) hex_notch([vcore.x, index]);
-        // draw notch (for narrow deck boxes)
-        if (draw) {
-            translate([0, -vbox.y/2, vbox.z]) rotate(Sdown)
-                punch(dwall) notch([vbox.x, depth], w1=vcore.x, angle=75);
-            translate([0, vbox.y/2, vbox.z]) scale([1, -1]) rotate(Sdown)
-                punch(dwall) hex_notch([vcore.x, draw]);
+        // notch
+        if (notch || draw || thumb) translate([0, -vbox.y/2, vbox.z]) {
+            if (draw) {
+                // front draw notch (for vertical deck boxes)
+                rotate(Sdown) punch(dwall)
+                    notch([vbox.x, depth], w1=vcore.x, angle=75);
+                translate([0, vbox.y]) rotate(Sdown) punch(-dwall)
+                    hex_notch([vcore.x, draw]);
+            } else if (thumb) {
+                // side thumb notch (for horizontal card trays)
+                punch(-vbox.z) hex_notch([vcore.x, thumb/2]);
+                rotate(Sdown) punch(dwall)
+                    notch([vcore.x, depth], w2=thumb/sin(Ahex));
+            } else {
+                // long top notch (for horizontal deck boxes)
+                rotate(Sdown) punch(vbox.y) hex_notch([vcore.x, notch]);
+            }
         }
     }
     // children
     raise(vbox.z+EPSILON) children();
 }
 module box_divider(size=Vbox, height=Hcard_divider, r=Rext, wall=undef, gap=Dgap,
-                   hole=false, notch=false, draw=false, thick=true, color=undef) {
+                   hole=false, notch=false, thick=true, color=undef) {
     vbox = area(size);
     vcore = vbox - area(2*r);
     // convert numeric flags to defaults
@@ -1061,10 +1063,13 @@ module test_game_shapes() {
     grid(-3) deck_divider();
     grid(-4) tray_divider();
     grid(-5) creasing_tool();
-    grid(+1) card_tray() %tray_divider();
-    grid(+2) card_tray(cards=floor((Htray-Hfloor-Hlip)/Hcard));
-    grid(+3) draw_tray();
-    grid(+4) deck_box();
+    grid(+2) card_tray() %tray_divider();
+    grid(+3) card_tray(cards=floor((Htray-Hfloor-Hlip)/Hcard));
+    grid(+4) draw_tray();
+    grid(+5) deck_box();
     grid(+0, -1.25) layout_tool([72, 20]);
+    grid(+1, +1) box([Vtray.y, 4*Vtray.z, Vtray.x], notch=true);
+    grid(+1, +0) box(volume(Vtray, wide=true), hole=true, thumb=true);
+    grid(+1, -1) box([Vtray.y, Vtray.z, Vtray.x], draw=true, feet=true);
 }
 
