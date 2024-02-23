@@ -53,6 +53,7 @@ echo(Hstack=Hstack, Drim=Drim);
 Avee = 60;  // default angle for notches (TODO: replace with Atab)
 Atab = 60;  // default angle for tabs & notches
 Ahex = 60;  // default angle for hexagons & triangles
+Adeep = 75;  // default angle for deep notches
 Arack = 75;  // default angle for card & tile racks
 Adraw = 3;  // default slope for draw trays (TODO: are these obsolete?)
 Sup = [90, 0, 0];
@@ -144,6 +145,12 @@ let (v=is_list(size) ? [size.x, size.y, size.z] : [size, size, size]) [
     is_undef(wide) ? v.x : wide ? absmax(v.x, v.y) : absmin(v.x, v.y),
     is_undef(wide) ? v.y : wide ? absmin(v.x, v.y) : absmax(v.x, v.y),
     is_undef(height) ? v.z : height,
+];
+function grid(size=1) =
+let (v=is_list(size) ? [size.x, size.y] : size ? [1, size] : [0, 0]) [
+    // scalar: [1, depth]; 1-vector: [width, 1]; 2-vector: [width, depth]
+    is_undef(v.x) ? 1 : v.x,
+    is_undef(v.y) ? 1 : v.y,
 ];
 
 // deck & box dimensions
@@ -438,7 +445,7 @@ module deck_box(n=0, size=Vcard, height=Hcard, width=0, lip=Hlip, draw=false,
             translate([(Dwall-vbox.x)/2, 0, vbox.z-vthumb.z])
                 rotate(90) wall_vee_cut(vthumb);
             // front cut
-            adraw = 75;
+            adraw = Adeep;
             hvee = vbox.z - Hfloor;  // maximum height
             dxvee = hvee / tan(adraw);
             vdraw = [dtop - 2*dxvee, 2*Dwall, hvee];
@@ -661,11 +668,11 @@ module hex(points=[[0, 0]], r=undef, grid=Rhex_grid, merge=Djoiner) {
         }
     }
 }
-module hex_tile(points=[[0, 0]], n=0, height=Htile, r=undef, grid=Rhex) {
+module hex_tile(points=[[0, 0]], n=0, height=Htile, r=undef, grid=Rhex_grid) {
     h = n ? eceil(n * height) : height;
     prism(height=h) hex(points, r=r, grid=grid);
 }
-module hex_tray(points=[[0, 0]], n=0, height=Htile, r=undef, grid=Rhex,
+module hex_tray(points=[[0, 0]], n=0, height=Htile, r=undef, grid=Rhex_grid,
                 lip=Hlip, hole=Dthumb) {
     h = n ? eceil(n * height) + Hfloor + lip : height;
     difference() {
@@ -680,15 +687,14 @@ module hex_tray(points=[[0, 0]], n=0, height=Htile, r=undef, grid=Rhex,
 }
 module hex_box(points=[[0, 0]], n=0, height=Htile, rhex=undef, grid=Rhex_grid,
                depth=undef, r=Rext, wall=undef, hole=undef, thick=false,
-               stack=false, rim=Drim, base=undef, lip=undef, color=undef) {
+               stack=false, base=undef, lip=undef, color=undef) {
     rhex = is_undef(rhex) ? len(points) == 1 ? Rhex_single : grid : rhex;
     hole = numeric_flag(hole, Dthumb);
     stack = numeric_flag(stack, Hstack);
     h = n ? lceil(n * height) + Hfloor + Hhead + stack : height;
     wall = is_undef(wall) ? wall_thickness(wall, thick) : wall;
     difference() {
-        stacker(height=h, depth=depth, r=r, wall=wall, stack=stack, rim=rim,
-                base=base, lip=lip)
+        stacker(height=h, depth=depth, r=r, wall=wall, stack=stack, base=base, lip=lip)
             offset(delta=r) hex(points, r=rhex, grid=grid);
         if (hole) punch(Hfloor) fillet(rext=r-wall) hex(points, hole/2, grid);
     }
@@ -946,42 +952,75 @@ module stacker(size=undef, height=undef, depth=undef, r=Rext, wall=undef,
     }
     stack() if (v) square(area(v), center=true); else children();
 }
-module box(size=Vbox, height=undef, depth=undef, r=Rext, grid=1,
-           wall=undef, divider=undef, tabs=false, slots=false, scoop=false,
-           hole=false, notch=false, thumb=false, draw=false, feet=false,
-           thick=undef, stack=undef, rim=undef, base=undef, lip=undef,
-           color=undef) {
-    // box dimensions
+module box(
+    // exterior dimensions
+    size=Vbox,      // exterior size in 2 or 3 dimensions (= Vbox)
+    height=undef,   // wall height (overrides size.z if given)
+    r=Rext,         // corner radius (= Rext)
+    // wall dimensions & layout
+    thick=undef,    // wall thickness selector (see below)
+    wall=undef,     // exterior wall thickness (see below)
+    divider=undef,  // interior wall thickness (= wall)
+    grid=1,         // section layout (= [1, 1])
+    // interior dimensions
+    depth=undef,    // well depth (= height-Hfloor)
+    scoop=false,    // scoop radius
+    hole=false,     // bottom hole diameter
+    // notch dimensions -- TODO: update code to new definitions
+    notch=false,    // top notch depth (= Dthumb)
+    thumb=false,    // thumb notch width (= Dthumb)
+    draw=false,     // draw notch depth (= depth)
+    feet=false,     // rear feet for side draw boxes
+    // stacking features
+    tabs=false,     // side tabs (= size.y)
+    slots=false,    // side slots (= size.y)
+    stack=undef,    // stacking base height (= Hfoot)
+    rim=undef,
+    base=undef,
+    lip=undef,
+    // preview options
+    color=undef,
+    debug=true,
+) {
+    // exterior dimensions
     vbox = volume(size, height);
-    depth = is_undef(depth) ? vbox.z - Hfloor : depth;
+    height = vbox.z;
+    if (debug) echo(vbox=vbox, height=height);
+    // wall dimensions & layout
     thick = is_undef(thick) ? tabs || slots || thumb : thick;
     wall = is_undef(wall) ? wall_thickness(wall, thick) : wall;
     divider = wall_thickness(divider, default=wall);
-    vwell = volume(area(vbox) - area(2*wall), depth);
-    hfloor = vbox.z - vwell.z;
-    vcore = area(vbox) - area(4*r);  // safe cutting area
-    // convert numeric flags to defaults
-    tabs = numeric_flag(tabs, vbox.y);
-    slots = numeric_flag(slots, vbox.y);
+    grid = grid(grid);
+    if (debug) echo(thick=thick, wall=wall, divider=divider, grid=grid);
+    // interior dimensions
+    depth = is_undef(depth) ? vbox.z - Hfloor : depth;
     scoop = numeric_flag(scoop, 3/2*r);
     hole = numeric_flag(hole, Dthumb);
-    notch = numeric_flag(notch, Dthumb);
-    draw = numeric_flag(draw, notch ? notch : Dthumb);
-    thumb = numeric_flag(thumb, notch ? notch : Dthumb);
-    stack = numeric_flag(stack, Hstack);
-    echo(tabs=tabs, slots=slots, scoop=scoop, hole=hole, notch=notch, stack=stack);
-    // grid divisions
-    grid = area(grid);
+    if (debug) echo(depth=depth, scoop=scoop, hole=hole);
+    vwell = volume(area(vbox) - area(2*wall), depth);
     dx = (vwell.x + divider) / grid.x;
     dy = (vwell.y + divider) / grid.y;
     vcell = vround([dx - divider, dy - divider, depth]);
-    echo(vbox=vbox, vwell=vwell, vcore=vcore, vcell=vcell,
-         wall=wall, divider=divider, depth=depth, hfloor=hfloor, r=r);
+    hfloor = vbox.z - vwell.z;
+    if (debug) echo(vwell=vwell, vcell=vcell, hfloor=hfloor);
+    // notch dimensions
+    notch = numeric_flag(notch, Dthumb);
+    thumb = numeric_flag(thumb, Dthumb);
+    draw = numeric_flag(draw, depth);
+    vcore = area(vbox) - area(4*r);  // safe cutting area
+    if (debug) echo(notch=notch, thumb=thumb, draw=draw, vcore=vcore);
+    // stacking features
+    tabs = numeric_flag(tabs, vbox.y);
+    slots = numeric_flag(slots, vbox.y);
+    stack = numeric_flag(stack, Hstack);
+    base = stack && (is_undef(base) ? true : base);
+    lip = stack && (is_undef(lip) ? true : lip);
+    if (debug) echo(tabs=tabs, slots=slots, stack=stack, base=base, lip=lip);
     // build the box
     colorize(color) difference() {
         // exterior
         union() {
-            stacker(vbox, depth=0, r=r, stack=stack, rim=rim, base=base, lip=lip);
+            stacker(vbox, depth=0, r=r, stack=stack, base=base, lip=lip);
             if (tabs) {
                 o = [0, tabs < 0 ? vbox.y/2 + tabs/2 : 0, vbox.z];
                 vt = [vbox.x, abs(tabs), vbox.z];
@@ -1010,24 +1049,43 @@ module box(size=Vbox, height=undef, depth=undef, r=Rext, grid=1,
             }
         // notch
         if (notch || draw || thumb) translate([0, -vbox.y/2, vbox.z]) {
+            // long top notch (for horizontal deck boxes)
+            if (notch) {
+                rotate(Sdown) punch(vbox.y) hex_notch([vcore.x, notch]);
+                if (lip) {
+                    // fix corners on stackers
+                    angle = Ahex;
+                    ws = r/tan(90 - angle/2);  // shoulder width
+                    wnotch = min(4*notch/tan(angle), vcore.x - 2*ws);
+                    w1 = wnotch - 2*stack/tan(angle);
+                    d = wnotch/2 * sin(angle) - stack;
+                    raise(Djoiner-stack) rotate(Sdown) punch(vbox.y, -Drim)
+                        notch([vcore.x, d], w1=w1, rint=r, rext=r);
+                }
+            }
             if (draw) {
                 // front draw notch (for vertical deck boxes)
-                angle=75;
+                angle = Adeep;
                 w1 = vcore.x;
                 w2 = w1 - 2*depth/tan(angle);
-                punch(-vbox.z) notch([w2, wall/2], rint=r, rext=r);
                 rotate(Sdown) punch(wall)
-                    notch([vbox.x, depth], w1=w1, angle=angle, rint=r);
-                translate([0, vbox.y]) rotate(Sdown) punch(-wall)
-                    hex_notch([vcore.x, draw]);
-            } else if (thumb) {
+                    notch([vbox.x, draw], w1=w1, angle=angle, rint=r);
+                if (lip) {
+                    // fix corners on stackers
+                    w1 = w1 - 2*stack/tan(angle);
+                    translate([0, Drim, Djoiner-stack])
+                        rotate(Sdown) prism(height=Dwall-Drim+Dcut)
+                        notch([vbox.x, draw-stack], w1=w1, angle=angle, rint=r);
+                }
+                if (base && depth <= draw)  // soften ridge at base
+                    punch(-vbox.z) notch([w2, Drim+Dgap], rint=r, rext=r);
+            }
+            if (thumb) {
                 // side thumb notch (for horizontal card trays)
+                // TODO: fix corners on stackers
                 punch(-vbox.z) hex_notch([vcore.x, thumb/2]);
                 rotate(Sdown) punch(wall)
                     notch([vcore.x, depth], w2=thumb/sin(Ahex));
-            } else {
-                // long top notch (for horizontal deck boxes)
-                rotate(Sdown) punch(vbox.y) hex_notch([vcore.x, notch]);
             }
         }
     }
@@ -1115,26 +1173,28 @@ module test_pattern() {
 module test_game_shapes() {
     // TODO: update
     %box_frame();
-    module grid(i=0, j=0) {
+    module layout(i=0, j=0) {
         translate([100*i, 120*j]) children();
     }
-    grid(-1) scoop_tray();
-    grid(-2) grid_divider();
-    grid(-3) deck_divider();
-    grid(-4) tray_divider();
-    grid(-5) creasing_tool();
-    grid(+2) card_tray() %tray_divider();
-    grid(+3) card_tray(cards=floor((Htray-Hfloor-Hlip)/Hcard));
-    grid(+4) draw_tray();
-    grid(+5) deck_box();
-    grid(+0, -1) box(25, 5, grid=2, stack=true);
-    grid(+0, -1/2) stacker(25, 5);
+    layout(-1) scoop_tray();
+    layout(-2) grid_divider();
+    layout(-3) deck_divider();
+    layout(-4) tray_divider();
+    layout(-5) creasing_tool();
+    layout(+2) card_tray() %tray_divider();
+    layout(+3) card_tray(cards=floor((Htray-Hfloor-Hlip)/Hcard));
+    layout(+4) draw_tray();
+    layout(+5) deck_box();
+    layout(+0, -2) box(25, 5, grid=[2, 2], stack=true);
+    layout(+0, -3/2) stacker(25, 5);
     hex3 = [[-1/2, 1], [-1/2, 0], [1/2, 0]];
     rhex = Dthumb/2;
-    grid(+0, +0) hex_box(hex3, height=5, rhex=rhex, grid=rhex, hole=rhex, stack=true);
-    grid(+0, +1) layout_tool([72, 20]);
-    grid(+1, +1) box([Vtray.y, 4*Vtray.z, Vtray.x], notch=true);
-    grid(+1, +0) box(volume(Vtray, wide=true), hole=true, thumb=true);
-    grid(+1, -1) box([Vtray.y, Vtray.z, Vtray.x], draw=true, feet=true);
+    layout(+0, -1) hex_box(hex3, height=5, rhex=rhex, grid=rhex, hole=rhex, stack=true);
+    layout(+0, +0) box([76, 50, 49], grid=2, draw=true, notch=true, stack=true);
+    layout(+0, +1) box([50, 50, 49], grid=2, draw=true, notch=true, stack=true);
+    layout(+0, +2) layout_tool([72, 20]);
+    layout(+1, +1) box([Vtray.y, 4*Vtray.z, Vtray.x], notch=true);
+    layout(+1, +0) box(volume(Vtray, wide=true), hole=true, thumb=true);
+    layout(+1, -1) box([Vtray.y, Vtray.z, Vtray.x], draw=true, feet=true);
 }
 
