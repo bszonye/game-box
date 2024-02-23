@@ -946,20 +946,18 @@ module stacker(size=undef, height=undef, depth=undef, r=Rext, wall=undef,
     }
     stack() if (v) square(area(v), center=true); else children();
 }
-module box(size=Vbox, height=undef, well=undef, depth=undef, r=Rext, grid=1,
+module box(size=Vbox, height=undef, depth=undef, r=Rext, grid=1,
            wall=undef, divider=undef, tabs=false, slots=false, scoop=false,
            hole=false, notch=false, thumb=false, draw=false, feet=false,
            thick=undef, stack=undef, rim=undef, base=undef, lip=undef,
            color=undef) {
     // box dimensions
     vbox = volume(size, height);
+    depth = is_undef(depth) ? vbox.z - Hfloor : depth;
     thick = is_undef(thick) ? tabs || slots || thumb : thick;
     wall = is_undef(wall) ? wall_thickness(wall, thick) : wall;
-    vwell = volume(is_undef(well) ? area(vbox) - area(2*wall) : well,
-                  is_undef(depth) ? vbox.z - Hfloor : depth);
-    dwall = max(vbox.x - vwell.x, vbox.y - vwell.y) / 2;
-    ddiv = wall_thickness(divider, thick, default=wall);
-    depth = vwell.z;
+    divider = wall_thickness(divider, default=wall);
+    vwell = volume(area(vbox) - area(2*wall), depth);
     hfloor = vbox.z - vwell.z;
     vcore = area(vbox) - area(4*r);  // safe cutting area
     // convert numeric flags to defaults
@@ -974,11 +972,11 @@ module box(size=Vbox, height=undef, well=undef, depth=undef, r=Rext, grid=1,
     echo(tabs=tabs, slots=slots, scoop=scoop, hole=hole, notch=notch, stack=stack);
     // grid divisions
     grid = area(grid);
-    dx = (vwell.x + ddiv) / grid.x;
-    dy = (vwell.y + ddiv) / grid.y;
-    vcell = vround([dx - ddiv, dy - ddiv, depth]);
+    dx = (vwell.x + divider) / grid.x;
+    dy = (vwell.y + divider) / grid.y;
+    vcell = vround([dx - divider, dy - divider, depth]);
     echo(vbox=vbox, vwell=vwell, vcore=vcore, vcell=vcell,
-         dwall=dwall, ddiv=ddiv, depth=depth, hfloor=hfloor, r=r);
+         wall=wall, divider=divider, depth=depth, hfloor=hfloor, r=r);
     // build the box
     colorize(color) difference() {
         // exterior
@@ -990,7 +988,7 @@ module box(size=Vbox, height=undef, well=undef, depth=undef, r=Rext, grid=1,
                 translate(o) stacking_tabs(vt, r=r);
             }
             if (feet) {
-                o = [vcore.x/2-3/2*r, vbox.y/2+dwall-r, vbox.z-3/2*r];
+                o = [vcore.x/2-3/2*r, vbox.y/2+wall-r, vbox.z-3/2*r];
                 for (i=[-1,+1]) scale([i, 1]) translate(o) sphere(r);
             }
         }
@@ -1001,10 +999,10 @@ module box(size=Vbox, height=undef, well=undef, depth=undef, r=Rext, grid=1,
             translate(o) stacking_tabs(vt, r=r, slot=true);
         }
         // interior
-        for (i=[1/2:grid.x]) for (j=[1/2:grid.y])
-            translate([i*dx, j*dy] - area(vwell/2) - area(ddiv)/2) {
+        if (grid.x && grid.y) for (i=[1/2:grid.x]) for (j=[1/2:grid.y])
+            translate([i*dx, j*dy] - area(vwell/2) - area(divider)/2) {
                 if (depth) raise(hfloor) {
-                    rint = r - dwall;
+                    rint = r - wall;
                     if (scoop) scoop(vcell, rint=rint, rscoop=scoop, cut=Dcut);
                     else prism(vcell, height=vcell.z+Dcut, r=rint);
                 }
@@ -1014,14 +1012,18 @@ module box(size=Vbox, height=undef, well=undef, depth=undef, r=Rext, grid=1,
         if (notch || draw || thumb) translate([0, -vbox.y/2, vbox.z]) {
             if (draw) {
                 // front draw notch (for vertical deck boxes)
-                rotate(Sdown) punch(dwall)
-                    notch([vbox.x, depth], w1=vcore.x, angle=75);
-                translate([0, vbox.y]) rotate(Sdown) punch(-dwall)
+                angle=75;
+                w1 = vcore.x;
+                w2 = w1 - 2*depth/tan(angle);
+                punch(-vbox.z) notch([w2, wall/2], rint=r, rext=r);
+                rotate(Sdown) punch(wall)
+                    notch([vbox.x, depth], w1=w1, angle=angle, rint=r);
+                translate([0, vbox.y]) rotate(Sdown) punch(-wall)
                     hex_notch([vcore.x, draw]);
             } else if (thumb) {
                 // side thumb notch (for horizontal card trays)
                 punch(-vbox.z) hex_notch([vcore.x, thumb/2]);
-                rotate(Sdown) punch(dwall)
+                rotate(Sdown) punch(wall)
                     notch([vcore.x, depth], w2=thumb/sin(Ahex));
             } else {
                 // long top notch (for horizontal deck boxes)
