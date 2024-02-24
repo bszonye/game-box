@@ -655,8 +655,8 @@ module scoop_tray(size=Vtray, height=undef, grid=1, rscoop=2*Rext, lip=Hlip,
     }
 }
 
-module hex(points=[[0, 0]], r=undef, grid=Rhex_grid, merge=Djoiner) {
-    rhex = is_undef(r) ? len(points) == 1 ? Rhex_single : grid : r;
+module hex(points=[[0, 0]], rhex=undef, grid=Rhex_grid, merge=Djoiner) {
+    rhex = is_undef(rhex) ? len(points) == 1 ? Rhex_single : grid : rhex;
     x1 = sin(Ahex) * rhex;
     y1 = rhex / 2;
     phex = [[0, rhex], [-x1, y1], [-x1, -y1], [0, -rhex], [x1, -y1], [x1, y1]];
@@ -668,21 +668,21 @@ module hex(points=[[0, 0]], r=undef, grid=Rhex_grid, merge=Djoiner) {
         }
     }
 }
-module hex_tile(points=[[0, 0]], n=0, height=Htile, r=undef, grid=Rhex_grid) {
+module hex_tile(points=[[0, 0]], n=0, height=Htile, rhex=undef, grid=Rhex_grid) {
     h = n ? eceil(n * height) : height;
-    prism(height=h) hex(points, r=r, grid=grid);
+    prism(height=h) hex(points, rhex=rhex, grid=grid);
 }
-module hex_tray(points=[[0, 0]], n=0, height=Htile, r=undef, grid=Rhex_grid,
+module hex_tray(points=[[0, 0]], n=0, height=Htile, rhex=undef, grid=Rhex_grid,
                 lip=Hlip, hole=Dthumb) {
     h = n ? eceil(n * height) + Hfloor + lip : height;
     difference() {
         prism(height=h, rint=Rint, rext=Rext)
-            offset(delta=Rext) hex(points, r=r, grid=grid);
+            offset(delta=Rext) hex(points, rhex=rhex, grid=grid);
         raise(Hfloor) prism(height=h, rint=Rext, rext=Rint)
-            offset(delta=Rint) hex(points, r=r, grid=grid);
+            offset(delta=Rint) hex(points, rhex=rhex, grid=grid);
         if (hole)
             raise(-Dcut) prism(height=Hfloor+2*Dcut, r=Rext)
-            hex(points, r=hole/2, grid=grid);
+            hex(points, rhex=hole/2, grid=grid);
     }
 }
 module hex_box(points=[[0, 0]], n=0, height=Htile, rhex=undef, grid=Rhex_grid,
@@ -695,7 +695,7 @@ module hex_box(points=[[0, 0]], n=0, height=Htile, rhex=undef, grid=Rhex_grid,
     wall = is_undef(wall) ? wall_thickness(wall, thick) : wall;
     difference() {
         stacker(height=h, depth=depth, r=r, wall=wall, stack=stack, base=base, lip=lip)
-            offset(delta=r) hex(points, r=rhex, grid=grid);
+            offset(delta=r) hex(points, rhex=rhex, grid=grid);
         if (hole) punch(Hfloor) fillet(rext=r-wall) hex(points, hole/2, grid);
     }
 }
