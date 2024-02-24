@@ -759,6 +759,13 @@ module tile_rack(n, size, angle=Arack, margin=Rext, lip=Hlip, color=undef) {
 }
 
 // tabs & notches
+function tab_angle(v, w, r) =
+    echo(v=v, w=w, r=r)
+    // find the widest angle that fits between the tab shoulders
+    // https://math.stackexchange.com/a/4479659/88237
+    let (dc = [v.x/2-w/2, v.y-r],  // widest shoulder position
+         dt = sqrt(dc.x^2 + dc.y^2 - r^2))  // corner -> shoulder tangent
+        atan((dc.x*r + dc.y*dt) / (dc.x*dt - dc.y*r));
 module tab(size, w1=undef, w2=undef, angle=Atab, rint=Rint, rext=Rext,
            joiner=Djoiner) {
     // create a tab shape inside a given area
@@ -771,13 +778,7 @@ module tab(size, w1=undef, w2=undef, angle=Atab, rint=Rint, rext=Rext,
     //   joiner  depth below baseline (for joining parts)
     v = area(size);
     // adjust the angle to fit the available space, if needed
-    function tab_angle(v, w) =
-        // find the widest angle that fits between the tab shoulders
-        // https://math.stackexchange.com/a/4479659/88237
-        let (dc = [v.x/2-w/2, v.y-rint],  // widest shoulder position
-             dt = sqrt(dc.x^2 + dc.y^2 - rint^2))  // corner -> shoulder tangent
-            atan((dc.x*rint + dc.y*dt) / (dc.x*dt - dc.y*rint));
-    min_angle = w2 ? tab_angle(v, w2) : EPSILON;
+    min_angle = w2 ? tab_angle(v, w2, rint) : EPSILON;
     angle = w1 && w2 ? atan2(v.y, (w1-w2)/2) : max(angle, min_angle);
     dx1 = rint/tan(90 - angle/2);  // distance x1-x0
     dx2 = v.y/tan(angle);  // distance x2-x1
@@ -935,15 +936,16 @@ module stacker(size=undef, height=undef, depth=undef, r=Rext, wall=undef,
     }
     module stack() difference() {
         if (base) {
+            joiner = Dcut;  // thicker joiner to avoid clash with floors
             raise(hfloor) prism(height=h-hfloor, r=r) children();
             raise(stack) if (convex) hull() {
-                prism(height=Djoiner) inset(rim+gap) children();
-                raise(hfloor-stack) prism(height=Djoiner, r=r) children();
+                prism(height=joiner) inset(rim+gap) children();
+                raise(hfloor-stack) prism(height=joiner, r=r) children();
             } else minkowski() {
-                prism(height=Djoiner) inset(rim+gap) children();
+                prism(height=joiner) inset(rim+gap) children();
                 cylinder(h=hfloor-stack, r1=0, r2=rim+gap);
             }
-            prism(height=stack+Djoiner) inset(rim+gap) children();
+            prism(height=stack+joiner) inset(rim+gap) children();
         } else prism(height=h, r=r) children();
         if (lip) raise(h - stack)
             prism(height=stack+Dcut) inset(rim) children();
@@ -966,7 +968,7 @@ module box(
     depth=undef,    // well depth (= height-Hfloor)
     scoop=false,    // scoop radius
     hole=false,     // bottom hole diameter
-    // notch dimensions -- TODO: update code to new definitions
+    // notch dimensions
     notch=false,    // top notch depth (= Dthumb)
     thumb=false,    // thumb notch width (= Dthumb)
     draw=false,     // draw notch depth (= depth)
@@ -1067,25 +1069,39 @@ module box(
                 // front draw notch (for vertical deck boxes)
                 angle = Adeep;
                 w1 = vcore.x;
-                w2 = w1 - 2*depth/tan(angle);
+                vnotch = [vbox.x, draw];
                 rotate(Sdown) punch(wall)
-                    notch([vbox.x, draw], w1=w1, angle=angle, rint=r);
+                    notch(vnotch, w1=w1, angle=angle, rint=r, rext=r);
                 if (lip) {
                     // fix corners on stackers
                     w1 = w1 - 2*stack/tan(angle);
+                    vnotch = [vnotch.x, vnotch.y-stack];
                     translate([0, Drim, Djoiner-stack])
-                        rotate(Sdown) prism(height=Dwall-Drim+Dcut)
-                        notch([vbox.x, draw-stack], w1=w1, angle=angle, rint=r);
+                        rotate(Sdown) prism(height=wall-Drim+Dcut)
+                        notch(vnotch, w1=w1, angle=angle, rint=r, rext=r);
                 }
-                if (base && depth <= draw)  // soften ridge at base
+                if (base && depth <= draw) {
+                    // soften ridge at base
+                    w2 = w1 - 2*depth/tan(angle);
                     punch(-vbox.z) notch([w2, Drim+Dgap], rint=r, rext=r);
+                }
             }
             if (thumb) {
                 // side thumb notch (for horizontal card trays)
-                // TODO: fix corners on stackers
                 punch(-vbox.z) hex_notch([vcore.x, thumb/2]);
-                rotate(Sdown) punch(wall)
-                    notch([vcore.x, depth], w2=thumb/sin(Ahex));
+                angle = Ahex;
+                vnotch = [vcore.x, depth];
+                w2 = thumb/sin(angle);
+                rotate(Sdown) punch(wall) notch(vnotch, w2=w2, rext=r);
+                if (lip) {
+                    // fix corners on stackers
+                    angle = max(angle, tab_angle(vnotch, w2, Rext));
+                    vnotch = [vnotch.x, vnotch.y-stack];
+                    echo(angle=angle);
+                    translate([0, Drim, Djoiner-stack])
+                        rotate(Sdown) prism(height=wall-Drim+Dcut)
+                        notch(vnotch, w2=w2, angle=angle, rext=r);
+                }
             }
         }
     }
@@ -1176,15 +1192,17 @@ module test_game_shapes() {
     module layout(i=0, j=0) {
         translate([100*i, 120*j]) children();
     }
-    layout(-1) scoop_tray();
-    layout(-2) grid_divider();
-    layout(-3) deck_divider();
-    layout(-4) tray_divider();
-    layout(-5) creasing_tool();
+    layout(-2) scoop_tray();
+    layout(-3) grid_divider();
+    layout(-4) deck_divider();
+    layout(-5) tray_divider();
+    layout(-6) creasing_tool();
     layout(+2) card_tray() %tray_divider();
     layout(+3) card_tray(cards=floor((Htray-Hfloor-Hlip)/Hcard));
     layout(+4) draw_tray();
     layout(+5) deck_box();
+    layout(-1, +1) box([75, 60, 25], hole=true, thumb=true, stack=true);
+    layout(-1, +0) box([60, 75, 25], hole=true, thumb=true, stack=true);
     layout(+0, -2) box(25, 5, grid=[2, 2], stack=true);
     layout(+0, -3/2) stacker(25, 5);
     hex3 = [[-1/2, 1], [-1/2, 0], [1/2, 0]];
