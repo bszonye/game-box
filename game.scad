@@ -56,9 +56,10 @@ Ahex = 60;  // default angle for hexagons & triangles
 Adeep = 75;  // default angle for deep notches
 Arack = 75;  // default angle for card & tile racks
 Adraw = 3;  // default slope for draw trays (TODO: are these obsolete?)
+Ascoop = tround(atan2(Hflayer, 2/3*Dfwidth));
 Sup = [90, 0, 0];
 Sdown = [-90, 0, 0];
-echo(Avee=Avee, Ahex=Ahex, Atab=Atab, Arack=Arack, Adraw=Adraw);
+echo(Avee=Avee, Ahex=Ahex, Atab=Atab, Arack=Arack, Adraw=Adraw, Ascoop=Ascoop);
 Dthumb = 25.0;  // index hole diameter
 echo(Dthumb=Dthumb);
 
@@ -655,24 +656,24 @@ module scoop_tray(size=Vtray, height=undef, grid=1, rscoop=2*Rext, lip=Hlip,
     }
 }
 
-module hex(points=[[0, 0]], rhex=undef, grid=Rhex_grid, merge=Djoiner) {
+module hex(points=[[0, 0]], grid=Rhex_grid, rhex=undef, merge=Djoiner, r=0) {
     rhex = is_undef(rhex) ? len(points) == 1 ? Rhex_single : grid : rhex;
     x1 = sin(Ahex) * rhex;
     y1 = rhex / 2;
     phex = [[0, rhex], [-x1, y1], [-x1, -y1], [0, -rhex], [x1, -y1], [x1, y1]];
     dx = sin(Ahex) * grid;
     dy = grid;
-    offset(delta=-merge) offset(delta=merge) for (p=points) {
+    fillet(r, r) offset(delta=-merge) offset(delta=merge) for (p=points) {
         translate([2 * (p.x + p.y/2) * dx, 1.5 * p.y * dy]) {
             polygon(phex);
         }
     }
 }
-module hex_tile(points=[[0, 0]], n=0, height=Htile, rhex=undef, grid=Rhex_grid) {
+module hex_tile(points=[[0, 0]], n=0, height=Htile, grid=Rhex_grid, rhex=undef) {
     h = n ? eceil(n * height) : height;
     prism(height=h) hex(points, rhex=rhex, grid=grid);
 }
-module hex_tray(points=[[0, 0]], n=0, height=Htile, rhex=undef, grid=Rhex_grid,
+module hex_tray(points=[[0, 0]], n=0, height=Htile, grid=Rhex_grid, rhex=undef,
                 lip=Hlip, hole=Dthumb) {
     h = n ? eceil(n * height) + Hfloor + lip : height;
     difference() {
@@ -685,18 +686,38 @@ module hex_tray(points=[[0, 0]], n=0, height=Htile, rhex=undef, grid=Rhex_grid,
             hex(points, rhex=hole/2, grid=grid);
     }
 }
-module hex_box(points=[[0, 0]], n=0, height=Htile, rhex=undef, grid=Rhex_grid,
-               depth=undef, r=Rext, wall=undef, hole=undef, thick=false,
-               stack=false, base=undef, lip=undef, color=undef) {
+module hex_box(
+    // exterior dimensions
+    points=[[0, 0]],    // hex layout
+    n=0,                // height multiplier (number of tiles)
+    height=Htile,       // height increment (tile thickness) or total height
+    head = Hhead,       // headroom above tiles (= Hhead)
+    grid=Rhex_grid,     // hex spacing (= Rhex_grid)
+    rhex=undef,         // hex size (= Rhex_single or grid)
+    r=Rext,             // corner radius (= Rext)
+    // wall dimensions & layout
+    thick=false,
+    wall=undef,
+    // interior dimensions
+    depth=undef,
+    hole=undef,
+    // stacking features
+    stack=false,
+    base=undef,
+    lip=undef,
+    // preview options
+    color=undef,
+    debug=true,
+) {
     rhex = is_undef(rhex) ? len(points) == 1 ? Rhex_single : grid : rhex;
-    hole = numeric_flag(hole, Dthumb);
     stack = numeric_flag(stack, Hstack);
-    h = n ? lceil(n * height) + Hfloor + Hhead + stack : height;
+    h = n ? lceil(n * height) + Hfloor + head + stack : height;
     wall = is_undef(wall) ? wall_thickness(wall, thick) : wall;
+    hole = numeric_flag(hole, Dthumb);
     difference() {
         stacker(height=h, depth=depth, r=r, wall=wall, stack=stack, base=base, lip=lip)
             offset(delta=r) hex(points, rhex=rhex, grid=grid);
-        if (hole) punch(Hfloor) fillet(rext=r-wall) hex(points, hole/2, grid);
+        if (hole) punch(Hfloor) fillet(rext=r) hex(points, rhex=hole/2, grid=grid);
     }
 }
 
@@ -898,21 +919,28 @@ module stacking_tabs(size, height=Htab, r=Rext, gap=Dfpath/2, slot=false) {
             tab([w, height], angle=90, rint=0, rext=height);
     }
 }
-module scoop(size, height=undef, rint=Rint, rscoop=2*Rext, cut=Dcut) {
+module scoop(size, height=undef, rint=Rint, rscoop=3/2*Rext, amin=Ascoop, cut=Dcut) {
+    $fa = Qfinal;
     v = volume(size, height);
-    rmax = min(v.x/4, v.y/4, v.z);  // limit radiuses to safe values
-    rn0 = min(rint, rmax);
-    rn1 = min(rscoop, rmax);
+    h = v.z+cut;
+    amin = eceil(amin, $fa);
+    px = 1 - sin(amin);
+    pz = cos(amin);
+    rmax = min(v.x/4/px, v.y/4/px, v.z/pz);  // limit radiuses to safe values
+    r1 = min(rscoop/px, rmax);
+    r0 = min(rint, r1);
+    h1 = r1*pz;
+    echo(r1=r1, h1=h1);
     hull() {
-        raise(v.z) prism(v, height=cut, r=rn0);
-        for (angle=[0:$fa:90]) {
-            cz = 1-cos(angle);
-            cx = 1-sin(angle);
-            htier = rscoop * cz;
-            vtier = v - 2 * cx * area(rn1);
-            rmax = min(vtier)/2 - EPSILON;
-            rtier = min(rmax, cx * (rn1 - rn0) + rn0);
-            raise(htier) prism(vtier, height=v.z-htier+EPSILON, r=rtier);
+        raise(v.z) prism(v, height=cut, r=r0);
+        for (angle=[amin:$fa:90]) {
+            dx = 1 - sin(angle);
+            dz = 1 - cos(angle) / cos(amin);
+            vtier = v - area(2*r1*dx);
+            htier = h1 * dz;
+            rmax = min(vtier)/2 - Djoiner;  // avoid collapsing fillets
+            rtier = min(rmax, r0 + (r1-r0)*dx);
+            raise(htier) prism(vtier, height=h-htier, r=rtier);
         }
     }
 }
@@ -966,7 +994,7 @@ module box(
     grid=1,         // section layout (= [1, 1])
     // interior dimensions
     depth=undef,    // well depth (= height-Hfloor)
-    scoop=false,    // scoop radius
+    scoop=false,    // scoop radius (= 3/2*r)
     hole=false,     // bottom hole diameter
     // notch dimensions
     notch=false,    // top notch depth (= Dthumb)
