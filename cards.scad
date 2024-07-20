@@ -6,6 +6,7 @@ INCH = 25.4;
 Vcard_poker = [2.5*INCH, 3.5*INCH];
 Hcard_poker = 0.300;  // Bicycle deck measures ca. 16.0 mm / 54 cards
 Hcard_radlands = 0.375;  // measured ca. 375 microns
+Hcard_sentinels = 0.380;  // measured ca. 375-380 microns
 // American Standard (bridge/whist size)
 Vcard_bridge = [2.25*INCH, 3.5*INCH];
 Hcard_bridge = 0.300;  // Bicycle deck measures ca. 16.0 mm / 54 cards
